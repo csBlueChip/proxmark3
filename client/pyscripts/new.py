@@ -55,31 +55,49 @@ def  pm3Call (cmd,  end='\n',  quiet=False):
 #++============================================================================ ========================================
 #============================================================================== ========================================
 class MFClassic:
-	def  __init__ (self,  name=""):
-		self.clear(name)
+	def  __init__ (self,  chip="UNKNOWN",  name="Data",  bdKey=""):
+		self.chip  = chip   # NFC chip ID
+		self.name  = name   # friendly name
+		self.bdKey = bdKey  # backdoor key
+
+		self.clear()
 		self.setup()
 
 	#+=========================================================================
-	def  clear (self,  name=""):
-		self.name = name
+	def  clear (self):
+		if 'self.sec' in locals():
+			for s in self.sec:
+				s.clear()
 
-		self.UID  = ""
-		self.mfg  = ""
+		self.sCnt = 0   # total sector count
+		self.bCnt = 0   # total block count
 
-		self.sCnt = 0   # sector count
-		self.sec  = []  # list of sectors
+		self.sec  = []  # sequential and contiguous list of all sectors
+		self.blk  = []  # sequential and contiguous list of all blocks
 
-		self.bCnt = 0
-		self.blk  = []
+		self.hist = ""  # command history
+
+	#+=========================================================================
+	def  history (self):
+		return self.hist
+
+	#+=========================================================================
+	def  addHist (self, cmd):
+		self.hist += "; " + cmd
+		return self.hist
 
 	#+=========================================================================
 	def  addSec (self,  sectors=1,  blocks=0,  bytes=16):
 		for _ in range(sectors):
-			s = Sector(blocks, bytes)
+			s = Sector(blocks, bytes, parent=self)
+			s.secN = self.sCnt
 			self.sec.append(s)
-			self.blk.append(s.blocks)
-		self.sCnt += sectors
-		self.bCnt += (sectors * blocks)
+			self.sCnt += 1
+
+			for b in s.blocks():
+				b.blkN = self.bCnt
+				self.bCnt += 1
+			self.blk.extend(s.blocks())
 
 		return self.sCnt, self.bCnt
 
@@ -88,12 +106,30 @@ class MFClassic:
 		return self.sCnt
 
 	#+=========================================================================
+	# All Sectors on the card as a single contiguous list
 	def  sectors (self):
 		return self.sec
 
 	#+=========================================================================
+	# Sectors may not be contiguous (eg. RF08S)
+	def  sector (self,  n=0):
+		if 0 <= n < sCnt:  return self.sec[n]
+		else:              return None
+
+	#+=========================================================================
 	def  blkCnt (self):
 		return self.bCnt
+
+	#+=========================================================================
+	# All Blocks on the card as a single contiguous list
+	def  blocks (self):
+		return self.sblk
+
+	#+=========================================================================
+	# Blocks may not be contiguous (eg. RF08S)
+	def  block (self,  n=0):
+		if 0 <= n < bCnt:  return self.blk[n]
+		else:              return None
 
 	#+=========================================================================
 	def  setup (self):
@@ -107,44 +143,143 @@ class MFClassic:
 #++============================================================================ ========================================
 #++============================================================================ ========================================
 #============================================================================== ========================================
-class MFC:
-	FM11RF32N_18 = 1
-	FM11RF32N_20 = 2
-	FM11RF08     = 3
-	FM11RF08S    = 4
-
+# A 1K card with a backdoor key
+#
 class  MFC_FM11RF08(MFClassic):
-	def  __init__ (self):
-		super().__init__("FM11RF08")
+	def  __init__ (self,  name="Data"):
+		super().__init__(          \
+			chip  = "FM11RF08",    \
+			name  = name,          \
+			bdKey = "A31667A8CEC1" \
+		)
 
 	#+=========================================================================
 	def setup(self):
 		self.addSec(sectors=16, blocks=4, bytes=16)
+
+#============================================================================== ========================================
+#============================================================================== ========================================
+# a 4K card with variable sector sizes
+#
+class  MFC_FM11RF32N_18(MFClassic):
+	def  __init__ (self,  name="Data"):
+		super().__init__(           \
+			chip  = "FM11RF32N/18", \
+			name  = name,           \
+			bdKey = "518b3354E760"  \
+		)
+
+	#+=========================================================================
+	def setup(self):
+		self.addSec(sectors=32, blocks= 4, bytes=16)
+		self.addSec(sectors= 8, blocks=16, bytes=16)
+
+#============================================================================== ========================================
+#============================================================================== ========================================
+# a 4K card with consistent sector sizes
+#
+class  MFC_FM11RF32N_20(MFClassic):
+	def  __init__ (self,  name="Data"):
+		super().__init__(           \
+			chip  = "FM11RF32N/20", \
+			name  = name,           \
+			bdKey = "518b3354E760"  \
+		)
+
+	#+=========================================================================
+	def setup(self):
+		self.addSec(sectors=64, blocks= 4, bytes=16)
+
+#============================================================================== ========================================
+#============================================================================== ========================================
+# A 1K card with non-contiguous Sector (and Block) numbering : 
+#    {0..15,[16..31], 32, 33}, {0..63, [64..127], 128..135}
+#
+class  MFC_FM11RF08S(MFClassic):
+	def  __init__ (self,  name="Data"):
+		super().__init__(          \
+			chip  = "FM11RF08S",   \
+			name  = name,          \
+			bdKey = "A396EFA4E24F" \
+		)
+
+	#+=========================================================================
+	def setup(self):
+		self.addSec(sectors=18, blocks=4, bytes=16)
+		for sn in range(16, 17+1):  self.sec[sn].secN = sn +16
+		for bn in range(64, 71+1):  self.blk[bn].blkN = bn +64
+
+	#+=========================================================================
+	def  sector (self,  n):
+		super().sector(n if 0 <= n <= 15 else (n-16))
+
+	#+=========================================================================
+	def  block (self,  n):
+		super().block(n if 0 <= n <= 63 else (n-64))
+
+#============================================================================== ========================================
+#============================================================================== ========================================
+class  MFC_DEMO(MFClassic):
+	def  __init__ (self,  name="Data"):
+		super().__init__(  \
+			chip = "DEMO", \
+			name = name,   \
+		)
+
+	#+=========================================================================
+	def setup(self):
+		self.addSec(sectors=2, blocks=2, bytes=3)
+
+#++============================================================================ ========================================
+MFC_ALL = [           \
+	MFC_FM11RF08,     \
+	MFC_FM11RF08S,    \
+	MFC_FM11RF32N_20, \
+	MFC_FM11RF32N_18, \
+]
 
 #++============================================================================ ========================================
 #++============================================================================ ========================================
 #++============================================================================ ========================================
 #============================================================================== ========================================
 class Sector:
-	def  __init__ (self,  blocks=0,  bytes=16):
+	def  __init__ (self,  blocks=0,  bytes=16,  parent=None):
+		self.__parent = parent
+
 		self.clear()
 		if blocks > 0:
-			self.addBlk(blocks, bytes)
+			self.addBlk(blocks, bytes, parent=self)
 
 	#+=========================================================================
 	def  clear (self):
+		if 'self.blk' in locals():
+			for b in self.blk:
+				b.clear()
+
 		self.secN = -1  # sector number
 		self.bCnt = 0   # block count
 		self.blk  = []  # list of blocks {0..bCnt}
 
-		self.keyA = ""    # eg. "112233445566"
+		self.keyA = ""  # eg. "112233445566"
 		self.keyB = ""
-		self.acl  = 0     # details are card specific
+		self.bits = ""
+
+		self.hist = ""  # edit history
 
 	#+=========================================================================
-	def  addBlk (self,  blocks=1,  bytes=16):
+	def  history (self):
+		return self.hist
+
+	#+=========================================================================
+	def  addHist (self, cmd):
+		self.hist += "; " + cmd
+		if self.__parent is not None:  self.__parent.addHist(cmd)
+		return self.hist
+
+	#+=========================================================================
+	def  addBlk (self,  blocks=1,  bytes=16,  parent=None):
 		for _ in range(blocks):
-			self.blk.append(Block(bytes))
+			self.blk.append(Block(bytes, parent=parent))
 		self.bCnt += blocks
 
 		return self.bCnt
@@ -169,6 +304,8 @@ class Sector:
 012345678901234567890123456789012345678901234567890123456789012345678901234567890
 0         1         2         3         4         5         6         7         8
 """
+import inspect
+
 class Keyhole:
 	NONE     = -1
 	A        = 0
@@ -177,12 +314,16 @@ class Keyhole:
 
 #%=============================================================================
 class Block:
-	def  __init__ (self,  bytes=0):
+	def  __init__ (self,  bytes=0,  parent=None):
+		self.__parent = parent
+
 		self.clear()
 		if bytes > 0:  self.blank(bytes)
 
 	#+=========================================================================
 	def  clear (self):
+		self.edit = None   # True/False/None => Edited/Read/Empty
+
 		self.blkN = -1     # block number
 		self.hole = -1     # keyhole (used to read block)
 		self.keyH = ""     # hex key (used to read block)
@@ -195,15 +336,15 @@ class Block:
 		self.mask = 0      # bit 2^n indicates that hexB[n] is valid
 		self.hexB = []     # hex bytes      b'\x58\x59\x5A\xFF'
 
-		self.cmd  = ""     # rdbl() read command (`hf mf rdbl...`)
 		self.rdOK = False  # block was successfully read from card (not created by hand)
 		self.tryN = 0      # read attempts >= 1 [only valid is rdOK==Tue]
 
 		self.nulV = 0x00   # value      given to null byte
 		self.nulH = "--"   # hex string given to null byte
 		self.nulC = "?"    # char       given to null byte
-
 		self.notA = "."    # char for not-ascii
+
+		self.hist = ""     # rdbl() read command (`hf mf rdbl...`)
 
 	#+=========================================================================
 	def  to_dict (self):
@@ -222,6 +363,16 @@ class Block:
 						return key
 
 	#+=========================================================================
+	def  history (self):
+		return self.hist
+
+	#+=========================================================================
+	def  addHist (self, cmd):
+		self.hist += "; " + cmd
+		if self.__parent is not None:  self.__parent.addHist(cmd)
+		return self.hist
+
+	#+=========================================================================
 	def  blank (self,  n=16):
 		self.clear()
 
@@ -232,23 +383,26 @@ class Block:
 		self.hexB = [self.nulV] * n           # hex bytes
 		self.text =  self.nulC  * n           # ascii text
 
-		self.cmd  = f"{self.whoami()}.blank({n})"
+		self.addHist(f"{self.whoami()}.blank({n})")
+		self.edit = None
 
 	#+=========================================================================
 	def  rdbl (self,  blkN=0,  hole=Keyhole.NONE,  key="",  retry=3,  end='\n',  quiet=False):
 		self.clear()
 
+		# build the PM3 command
 		self.blkN = blkN
-		self.cmd  = f"hf mf rdbl --blk {self.blkN}"
+		cmd       = f"hf mf rdbl --blk {self.blkN}"
 		if (hole != Keyhole.NONE):
 			self.hole = hole
-			self.cmd += f" -c {self.hole}"
+			cmd      += f" -c {self.hole}"
 		if (key  != ""):
 			self.keyH = key.replace(" ", "")
-			self.cmd += f" --key {self.keyH}"
+			cmd      += f" --key {self.keyH}"
+		self.addHist(cmd)
 
 		for self.tryN in range(1, retry+1):
-			pRes, pCap = pm3Call(self.cmd, quiet=(quiet or (self.tryN != 1)), end=end)
+			pRes, pCap = pm3Call(cmd, quiet=(quiet or (self.tryN != 1)), end=end)
 			if (pRes != 0):  continue  # read fail
 
 			for lin in pCap.split('\n'):
@@ -262,6 +416,7 @@ class Block:
 					self.mask = (1 << self.lenB) -1
 			if (self.rdOK):  break
 
+		self.edit = False
 		return self.rdOK
 
 	#+=========================================================================
@@ -276,6 +431,11 @@ class Block:
 	def  __poke (self, idx,  val):
 		if idx >= self.lenB:
 			raise ValueError("buffer overflow")
+
+		# we don't want to mark a block as dirty unless we need to
+		if (self.hexB[idx] == val):  return
+
+		valIn = val
 
 		if val == self.nulH:
 			val = self.nulV
@@ -293,6 +453,8 @@ class Block:
 		self.hexB[idx] = val
 		self.text      = self.text[:idx]   + ch + self.text[idx+1:]
 
+		self.edit = True
+
 	#+=========================================================================
 	# Poke values in to block
 	#   poke(0, 0xff)
@@ -302,13 +464,16 @@ class Block:
 	#   poke(7, [65,66,67])
 	#
 	def  poke (self, offs=0,  val=-1):
+
 		if type(val) == str:
+			self.addHist(f"poke({offs},\"{val}\")")
 			val = val.replace(" ", "")
 			if not all(c in set("0123456789abcdefABCDEF") for c in val):
 				return False
 			val = list(bytes.fromhex(val))
 
 		elif type(val) == int:
+			self.addHist(f"poke({offs},{val:#X})".replace("X","x"))
 			val = list(bytes.fromhex(hex(val)[2:]))
 
 		elif isinstance(val, list):
@@ -327,6 +492,8 @@ class Block:
 	#   pokeT(10, datetime.date.today().strftime("%Y-%m-%d"))
 	#
 	def  pokeT (self, offs=0,  s=""):
+		self.addHist(f"pokeT({offs},{s})")
+
 		if type(s) != str:  return False
 
 		for i in range(0, len(s)):
@@ -340,6 +507,8 @@ class Block:
 	#     will NOT return the Keys, but WILL return the ACL bits
 	#
 	def  pokeX (self, offs=0,  cnt=-1):
+		self.addHist(f"pokeX({offs},{cnt})")
+
 		if cnt == -1:
 			cnt = self.lenB - offs
 
@@ -361,7 +530,7 @@ class Log:
 		self.prEn  = True
 
 		self.log   = False  # start() has been executed
-		self.pause = False
+		self.pse   = False
 
 	#+=============================================================================
 	def  start (self,  fspec,  append=False):
@@ -378,8 +547,8 @@ class Log:
 				f.write(self.buf)
 			self.buf = ''
 
-		self.log   = True
-		self.pause = False
+		self.log = True
+		self.pse = False
 
 		return fspec
 
@@ -406,17 +575,17 @@ class Log:
 
 	#+=============================================================================
 	def  pause (self):
-		now = self.pause
-		self.pause = True
+		now = self.pse
+		self.pse = True
 		return now
 
 	#+=============================================================================
-	def  resume (self, state):
-		self.pause = state
+	def  resume (self, state=True):
+		self.pse = not state
 
 	#+=============================================================================
 	def say(self,  s='',   end='\n',  flush=False,  prompt=-1,  log=True):
-		if self.pause is True:  return
+		if self.pse is True:    return
 
 		if prompt == -1:        prompt = self.prUse
 		if self.prEn is False:  prompt = ""
@@ -437,31 +606,122 @@ log = Log()
 
 #++============================================================================ ========================================
 #++============================================================================ ========================================
+import inspect
+
+#++============================================
+def dumpCard(obj):
+	print(f",~~~~| {obj.chip}:{obj.name} |~~~~~~~~~~~~~")
+	dump_(obj, "|  ", "")
+	print(f"`~~~~~~~~~~~~~~~~~~~~~ /{obj.chip}:{obj.name}")
+
+#++============================================
+def dump(obj):
+	print(f",~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+	dump_(obj, "|  ", "")
+	print(f"`~~~~~~~~~~~~~~~~~~~~~")
+
+#++============================================
+# The recursive bit
+#
+def dump_ (obj,  iprev="|  ",  istr=""):
+	indent = iprev + istr
+	if len(indent) > 30:  sys.exit()
+
+	# collect all the atrributes
+	cls = obj.__class__                                    # do not go back up the chain!
+	attr_instance = {k: v for k, v in obj.__dict__.items() if not k.endswith("__parent")}
+	                                                       # no functions         no private stuff
+	attr_class    = {k: v for k, v in cls.__dict__.items() if not callable(v) and not k.startswith('__')}
+
+	# filter duplicates
+	attrs = [a for a in attr_instance] \
+	      + [a for a in attr_class if a not in attr_instance]
+#	print(attrs)
+
+	# parse them
+	for attr in attrs:
+		entry = getattr(obj, attr, None)
+
+		# iterate through lists
+		if isinstance(entry, list):
+			if len(entry) == 0:
+				# empty list
+				print(f"{indent}{attr}: []")
+				continue
+			print(f"{indent}{attr}: [")
+
+			cnt = 0
+			for item in entry:
+				# if item is a class - recurse in to it
+				if hasattr(item, '__dict__'):
+					istr = "   "
+					print(f"{indent}{istr},~~~~~~| {attr}[{cnt}] |~~~~~~~~~~~~~")
+					dump_(item, indent, istr+"|  ")
+					print(f"{indent}{istr}`~~~~~~~~~~~~~~~~~~~~~~~~~~~~ /{attr}[{cnt}]")
+					cnt += 1
+				else:
+					# not a class - wrap strings in quotes
+					itemWrap = f'"{item}"' if isinstance(item, str) else item
+					istr = "   "
+					print(f"{indent}{istr}{itemWrap}")
+
+			# end of list
+			print(f"{indent}] /{attr}")
+
+		elif hasattr(entry, '__dict__'):
+			# if item is a class - recurse in to it
+			print(f"{indent}{attr}:")
+			dump_(entry, indent, "¦  ")
+			print(f"{indent}`~~~~~~~~~~~~~~~~~ /{attr}")
+
+		else:
+			# not a class - wrap strings in quotes
+			entryWrap = f'"{entry}"' if isinstance(entry, str) else entry
+			print(f"{indent}{attr}: {entryWrap}")
+
 #++============================================================================ ========================================
+#++============================================================================ ========================================
+#++============================================================================ ========================================
+#def  mfcIdentify ():
+#	pass
+#
 #++============================================================================ ========================================
 def  main ():
 #	if not checkVer():
 #		return
 #	args  = parseCli()
 
-	# No logfile name yet
+	# logfile not started - this will get buffered
 	log.say("Welome")
 
+	# run the (known) backdoor key check
+	bdKey = getBackdoorKey()
+	log.say(f"Found backdoor key: {bdKey}")
+
+	# use getPref() to retrive the dump path from the PM3
 	dpath = getPref(Pref.DumpPath) + os.path.sep
 
-	bdKey = getBackdoorKey()
-	if bdKey is None:
-		log.say("No backdoor key")
-
+	# load a one-off block
 	blk0 = Block()
 	blk0.rdbl(0, quiet=True)
-	log.say(blk0.to_json())
+
+	if blk0.rdOK is False:
+		log.say("Failed to read Block #0", prompt="[!] ")
+		sys.exit(9)
+	else:
+		log.say(blk0.to_json())
+
+#	# Idenitfy the card from the manufacturing data
+#	mfcIdentify()
 
 	uid = blk0.hexC[:8]
+	dpath = getPref(Pref.DumpPath) + os.path.sep
 	logfile = log.start(f"{dpath}hf-mf-{uid}-log.txt")
 	log.say("\nLog file: " + color(f"{logfile}", fg="yellow"))
 
+	log.pause()
 
+	# lots of way to modify the data
 	blk0.poke(0, 0xff)
 	blk0.poke(1, 0xEEDD)
 	blk0.poke(3, "AA BB")
@@ -477,8 +737,14 @@ def  main ():
 	blk0.pokeX(6, 4)
 	log.say(blk0.to_json())
 
-	c = MFC_FM11RF08()
-	print(c)
+	log.resume()
+
+	card = MFC_DEMO("myCard")
+	card.blk[2].poke(0, 0xff)
+	card.sec[1].blk[0].poke(1, 0xee)
+	dumpCard(card)
+
+	dump(blk0)
 
 #++============================================================================ ========================================
 def  getBackdoorKey (quiet=False):
