@@ -11,6 +11,7 @@ import pm3
 import struct
 import json
 import datetime
+import gc
 
 #============================================================================== ========================================
 # optional color support .. `pip install ansicolors`
@@ -21,6 +22,9 @@ except ModuleNotFoundError:
         _ = fg
         return str(s)
 
+#++============================================================================ ========================================
+#++============================================================================ ========================================
+#++============================================================================ ========================================
 #++============================================================================ ========================================
 class Pref:
 	DumpPath  = "file.default.dumppath"
@@ -50,6 +54,113 @@ def  pm3Call (cmd,  end='\n',  quiet=False):
 #++============================================================================ ========================================
 #++============================================================================ ========================================
 #============================================================================== ========================================
+class MFClassic:
+	def  __init__ (self,  name=""):
+		self.clear(name)
+		self.setup()
+
+	#+=========================================================================
+	def  clear (self,  name=""):
+		self.name = name
+
+		self.UID  = ""
+		self.mfg  = ""
+
+		self.sCnt = 0   # sector count
+		self.sec  = []  # list of sectors
+
+		self.bCnt = 0
+		self.blk  = []
+
+	#+=========================================================================
+	def  addSec (self,  sectors=1,  blocks=0,  bytes=16):
+		for _ in range(sectors):
+			s = Sector(blocks, bytes)
+			self.sec.append(s)
+			self.blk.append(s.blocks)
+		self.sCnt += sectors
+		self.bCnt += (sectors * blocks)
+
+		return self.sCnt, self.bCnt
+
+	#+=========================================================================
+	def  secCnt (self):
+		return self.sCnt
+
+	#+=========================================================================
+	def  sectors (self):
+		return self.sec
+
+	#+=========================================================================
+	def  blkCnt (self):
+		return self.bCnt
+
+	#+=========================================================================
+	def  setup (self):
+		pass
+
+	#+=========================================================================
+	def  uid (self,  sz=4):
+		return self.blk[0].hexP[:3*sz],  self.blk[0].hexB[:sz], 
+
+#++============================================================================ ========================================
+#++============================================================================ ========================================
+#++============================================================================ ========================================
+#============================================================================== ========================================
+class MFC:
+	FM11RF32N_18 = 1
+	FM11RF32N_20 = 2
+	FM11RF08     = 3
+	FM11RF08S    = 4
+
+class  MFC_FM11RF08(MFClassic):
+	def  __init__ (self):
+		super().__init__("FM11RF08")
+
+	#+=========================================================================
+	def setup(self):
+		self.addSec(sectors=16, blocks=4, bytes=16)
+
+#++============================================================================ ========================================
+#++============================================================================ ========================================
+#++============================================================================ ========================================
+#============================================================================== ========================================
+class Sector:
+	def  __init__ (self,  blocks=0,  bytes=16):
+		self.clear()
+		if blocks > 0:
+			self.addBlk(blocks, bytes)
+
+	#+=========================================================================
+	def  clear (self):
+		self.secN = -1  # sector number
+		self.bCnt = 0   # block count
+		self.blk  = []  # list of blocks {0..bCnt}
+
+		self.keyA = ""    # eg. "112233445566"
+		self.keyB = ""
+		self.acl  = 0     # details are card specific
+
+	#+=========================================================================
+	def  addBlk (self,  blocks=1,  bytes=16):
+		for _ in range(blocks):
+			self.blk.append(Block(bytes))
+		self.bCnt += blocks
+
+		return self.bCnt
+
+	#+=========================================================================
+	def  blkCnt (self):
+		return self.bCnt
+
+	#+=========================================================================
+	def  blocks (self):
+		return self.blk
+
+#++============================================================================ ========================================
+#++============================================================================ ========================================
+#++============================================================================ ========================================
+#============================================================================== ========================================
 """
 [=]   # | sector 00 / 0x00                                | ascii
 [=] ----+-------------------------------------------------+-----------------
@@ -59,14 +170,16 @@ def  pm3Call (cmd,  end='\n',  quiet=False):
 0         1         2         3         4         5         6         7         8
 """
 class Keyhole:
-	X = -1
-	A = 0
-	B = 1
+	NONE     = -1
+	A        = 0
+	B        = 1
+	BACKDOOR = 4
 
 #%=============================================================================
 class Block:
-	def  __init__ (self):
+	def  __init__ (self,  bytes=0):
 		self.clear()
+		if bytes > 0:  self.blank(bytes)
 
 	#+=========================================================================
 	def  clear (self):
@@ -79,11 +192,18 @@ class Block:
 
 		self.hexP = ""     # hex padded     "58 59 5A FF"
 		self.hexC = ""     # hex condensed  "58595AFF"
+		self.mask = 0      # bit 2^n indicates that hexB[n] is valid
 		self.hexB = []     # hex bytes      b'\x58\x59\x5A\xFF'
 
 		self.cmd  = ""     # rdbl() read command (`hf mf rdbl...`)
 		self.rdOK = False  # block was successfully read from card (not created by hand)
 		self.tryN = 0      # read attempts >= 1 [only valid is rdOK==Tue]
+
+		self.nulV = 0x00   # value      given to null byte
+		self.nulH = "--"   # hex string given to null byte
+		self.nulC = "?"    # char       given to null byte
+
+		self.notA = "."    # char for not-ascii
 
 	#+=========================================================================
 	def  to_dict (self):
@@ -94,12 +214,33 @@ class Block:
 		return json.dumps(self.to_dict(), indent=indent)
 
 	#+=========================================================================
-	def  rdbl (self,  blkN=0,  hole=Keyhole.X,  key="",  retry=3,  end='\n',  quiet=False):
+	def  whoami (self):
+		for ref in gc.get_referrers(self):
+			if isinstance(ref, dict):
+				for key, val in ref.items():
+					if val is self:
+						return key
+
+	#+=========================================================================
+	def  blank (self,  n=16):
+		self.clear()
+
+		self.lenB = n
+
+		self.hexP = " ".join([self.nulH] *n)  # hex padded     "58 59 5A FF"
+		self.hexC =  self.nulH  * n           # hex condensed  "58595AFF"
+		self.hexB = [self.nulV] * n           # hex bytes
+		self.text =  self.nulC  * n           # ascii text
+
+		self.cmd  = f"{self.whoami()}.blank({n})"
+
+	#+=========================================================================
+	def  rdbl (self,  blkN=0,  hole=Keyhole.NONE,  key="",  retry=3,  end='\n',  quiet=False):
 		self.clear()
 
 		self.blkN = blkN
 		self.cmd  = f"hf mf rdbl --blk {self.blkN}"
-		if (hole >= 0 ):
+		if (hole != Keyhole.NONE):
 			self.hole = hole
 			self.cmd += f" -c {self.hole}"
 		if (key  != ""):
@@ -116,20 +257,36 @@ class Block:
 					self.hexC = self.hexP.replace(" ", "")
 					self.hexB = list(bytes.fromhex(self.hexC))
 					self.lenB = len(self.hexB)
-					self.text = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in self.hexB)
+					self.text = ''.join(chr(b) if 32 <= b <= 126 else self.notA for b in self.hexB)
 					self.rdOK = True
-					pass
+					self.mask = (1 << self.lenB) -1
 			if (self.rdOK):  break
 
 		return self.rdOK
 
 	#+=========================================================================
-	def  poke_ (self, idx,  val):
+	# Private function
+	#   try:
+	#      poke( off, val)
+	#      pokeT(off, val)
+	#      pokeX(off, lenl)
+	#   except ValueError as e:
+	#      log.say(f"Exception: {e}")
+	#
+	def  __poke (self, idx,  val):
 		if idx >= self.lenB:
 			raise ValueError("buffer overflow")
 
-		hh = hex(val)[2:].upper()
-		ch = chr(val) if 32 <= val <= 126 else '.'
+		if val == self.nulH:
+			val = self.nulV
+			hh  = self.nulH
+			ch  = self.nulC
+			self.mask &= ~(1 << idx)
+
+		else:
+			hh = hex(val)[2:].upper()
+			ch = chr(val) if 32 <= val <= 126 else self.notA
+			self.mask |= (1 << idx)
 
 		self.hexP      = self.hexP[:idx*3] + hh + self.hexP[(idx*3)+2:]
 		self.hexC      = self.hexC[:idx*2] + hh + self.hexC[(idx*2)+2:]
@@ -137,6 +294,13 @@ class Block:
 		self.text      = self.text[:idx]   + ch + self.text[idx+1:]
 
 	#+=========================================================================
+	# Poke values in to block
+	#   poke(0, 0xff)
+	#   poke(1, 0xEEDD)
+	#   poke(3, "AA BB")
+	#   poke(5, "1122")
+	#   poke(7, [65,66,67])
+	#
 	def  poke (self, offs=0,  val=-1):
 		if type(val) == str:
 			val = val.replace(" ", "")
@@ -154,20 +318,33 @@ class Block:
 			return False
 
 		for i in range(0, len(val)):
-			if self.poke_(offs+i, val[i]) == False:
-				return False
+			self.__poke(offs+i, val[i])
 
 		return True
 
 	#+=========================================================================
+	# Patch ASCII (or, in fact, any string)
+	#   pokeT(10, datetime.date.today().strftime("%Y-%m-%d"))
+	#
 	def  pokeT (self, offs=0,  s=""):
 		if type(s) != str:  return False
 
 		for i in range(0, len(s)):
-			if self.poke_(offs+i, ord(s[i])) == False:
-				return False
+			self.__poke(offs+i, ord(s[i]))
 
 		return True
+
+	#+=========================================================================
+	# Inavalidate a byte within a block
+	# eg. Using a backdoor key to read a trailer
+	#     will NOT return the Keys, but WILL return the ACL bits
+	#
+	def  pokeX (self, offs=0,  cnt=-1):
+		if cnt == -1:
+			cnt = self.lenB - offs
+
+		for i in range(offs, offs+cnt):
+			self.__poke(i, self.nulH)
 
 #++============================================================================ ========================================
 #++============================================================================ ========================================
@@ -178,11 +355,13 @@ class Log:
 		self.buf   = ''
 		self.fspec = None
 
+		# Prompt: default, in-use, enable_flag
 		self.prDF  = "[" + color("=", fg="yellow") + "] "
 		self.prUse = self.prDF
 		self.prEn  = True
 
-		self.log   = False
+		self.log   = False  # start() has been executed
+		self.pause = False
 
 	#+=============================================================================
 	def  start (self,  fspec,  append=False):
@@ -193,14 +372,16 @@ class Log:
 			with open(self.fspec, 'w'):
 				pass
 
+		# if input was sent prior to this, flush it now
 		if self.buf != '':
 			with open(self.fspec, 'a') as f:
 				f.write(self.buf)
 			self.buf = ''
 
-		self.log = True
+		self.log   = True
+		self.pause = False
 
-		return self.fspec
+		return fspec
 
 	#+=============================================================================
 	def  promptSet (self,  prompt = -1):
@@ -224,14 +405,26 @@ class Log:
 		self.log = not enable
 
 	#+=============================================================================
+	def  pause (self):
+		now = self.pause
+		self.pause = True
+		return now
+
+	#+=============================================================================
+	def  resume (self, state):
+		self.pause = state
+
+	#+=============================================================================
 	def say(self,  s='',   end='\n',  flush=False,  prompt=-1,  log=True):
-		if prompt == -1:  prompt = self.prUse
-		if self.prEn is False:
-			prompt = ""
+		if self.pause is True:  return
+
+		if prompt == -1:        prompt = self.prUse
+		if self.prEn is False:  prompt = ""
 
 		s = f"{prompt}" + f"\n{prompt}".join(s.split('\n'))
 		print(s, end=end, flush=flush)
 
+		# if the logfile is yet to be defined, buffer the input
 		if self.log is True:
 			if self.fspec is not None:
 				with open(self.fspec, 'a') as f:
@@ -281,10 +474,16 @@ def  main ():
 	except ValueError as e:
 		log.say(f"Exception: {e}")
 
+	blk0.pokeX(6, 4)
 	log.say(blk0.to_json())
 
+	c = MFC_FM11RF08()
+	print(c)
+
 #++============================================================================ ========================================
-def  getBackdoorKey ():
+def  getBackdoorKey (quiet=False):
+	if quiet is True:  qlog = log.pause()
+
 	#          FM11RF08S        FM11RF08        FM11RF32
 	klist = ["A396EFA4E24F", "A31667A8CEC1", "518b3354E760"]
 	bdKey = ""
@@ -293,7 +492,7 @@ def  getBackdoorKey ():
 	log.say("Trying known backdoor keys...")
 
 	for k in klist:
-		if blk0.rdbl(hole=4, key=k, end='') is True:
+		if blk0.rdbl(hole=Keyhole.BACKDOOR, key=k, end='') is True:
 			s = color('ok', fg='green')
 			log.say(f"    ( {s} )", prompt='')
 			bdKey = k
@@ -305,6 +504,7 @@ def  getBackdoorKey ():
 		log.say("\n Unknown key, or card not detected.", prompt="[" + color("!", fg="red") + "]")
 		return None
 
+	if quiet is True:  log.resume(qlog)
 	return bdKey
 
 
