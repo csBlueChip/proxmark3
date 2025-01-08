@@ -55,10 +55,9 @@ def  pm3Call (cmd,  end='\n',  quiet=False):
 #++============================================================================ ========================================
 #============================================================================== ========================================
 class MFClassic:
-	def  __init__ (self,  chip="UNKNOWN",  name="Data",  bdKey=""):
+	def  __init__ (self,  chip="UNKNOWN",  name="Data"):
 		self.chip  = chip   # NFC chip ID
 		self.name  = name   # friendly name
-		self.bdKey = bdKey  # backdoor key
 
 		self.clear()
 		self.setup()
@@ -142,19 +141,41 @@ class MFClassic:
 #++============================================================================ ========================================
 #++============================================================================ ========================================
 #++============================================================================ ========================================
+#    type = f"[{fida:02X}:{fidb:02X}]"            # type/name
+ #   if fidb == 0x90:
+  #      if fida == 0x01 or fida == 0x03 or fida == 0x04:
+   #         type += " - Fudan FM11RF08S"
+    #        is08S = True
+     #
+#    elif fidb == 0x1D:
+#        if fida == 0x01 or fida == 0x02 or fida == 0x03:
+#            type += " - Fudan FM11RF08"
+#
+#    elif fidb == 0x91 or fidb == 0x98:
+#        type += " - Fudan FM11RF08 (never seen in the wild)"
+#
+#    else:
+#        type += " - Unknown (please report)"
 #============================================================================== ========================================
 # A 1K card with a backdoor key
 #
 class  MFC_FM11RF08(MFClassic):
 	def  __init__ (self,  name="Data"):
+		self.bdKey = ["A31667A8CEC1"]  # backdoor keys
+
 		super().__init__(          \
 			chip  = "FM11RF08",    \
 			name  = name,          \
-			bdKey = "A31667A8CEC1" \
 		)
 
 	#+=========================================================================
-	def setup(self):
+	def  match (self,  blk0):
+		if (blk0.hexB[15] == 0x1D) and (blk0.hexB[8] in [0x01, 0x02, 0x03]):
+			return True
+		return False
+
+	#+=========================================================================
+	def setup (self):
 		self.addSec(sectors=16, blocks=4, bytes=16)
 
 #============================================================================== ========================================
@@ -163,10 +184,11 @@ class  MFC_FM11RF08(MFClassic):
 #
 class  MFC_FM11RF32N_18(MFClassic):
 	def  __init__ (self,  name="Data"):
+		self.bdKey = ["518b3354E760"]  # backdoor keys
+
 		super().__init__(           \
 			chip  = "FM11RF32N/18", \
 			name  = name,           \
-			bdKey = "518b3354E760"  \
 		)
 
 	#+=========================================================================
@@ -180,14 +202,15 @@ class  MFC_FM11RF32N_18(MFClassic):
 #
 class  MFC_FM11RF32N_20(MFClassic):
 	def  __init__ (self,  name="Data"):
+		self.bdKey = ["518b3354E760"]  # backdoor keys
+
 		super().__init__(           \
 			chip  = "FM11RF32N/20", \
 			name  = name,           \
-			bdKey = "518b3354E760"  \
 		)
 
 	#+=========================================================================
-	def setup(self):
+	def setup (self):
 		self.addSec(sectors=64, blocks= 4, bytes=16)
 
 #============================================================================== ========================================
@@ -197,14 +220,20 @@ class  MFC_FM11RF32N_20(MFClassic):
 #
 class  MFC_FM11RF08S(MFClassic):
 	def  __init__ (self,  name="Data"):
+		self.bdKey = ["A396EFA4E24F"]  # backdoor keys
+
 		super().__init__(          \
 			chip  = "FM11RF08S",   \
 			name  = name,          \
-			bdKey = "A396EFA4E24F" \
 		)
 
 	#+=========================================================================
-	def setup(self):
+	def  match (self,  blk0):
+		if (blk0.hexB[15] == 0x90) and (blk0.hexB[8] in [0x01, 0x03, 0x04]):
+			return True
+
+	#+=========================================================================
+	def setup (self):
 		self.addSec(sectors=18, blocks=4, bytes=16)
 		for sn in range(16, 17+1):  self.sec[sn].secN = sn +16
 		for bn in range(64, 71+1):  self.blk[bn].blkN = bn +64
@@ -236,6 +265,7 @@ MFC_ALL = [           \
 	MFC_FM11RF08S,    \
 	MFC_FM11RF32N_20, \
 	MFC_FM11RF32N_18, \
+	MFC_DEMO, \
 ]
 
 #++============================================================================ ========================================
@@ -272,8 +302,9 @@ class Sector:
 
 	#+=========================================================================
 	def  addHist (self, cmd):
-		self.hist += "; " + cmd
-		if self.__parent is not None:  self.__parent.addHist(cmd)
+		self.hist += ("; " if len(self.hist) else "") + cmd
+		if self.__parent is not None:
+			self.__parent.addHist(f"[{self.secN}]"+cmd)
 		return self.hist
 
 	#+=========================================================================
@@ -368,8 +399,9 @@ class Block:
 
 	#+=========================================================================
 	def  addHist (self, cmd):
-		self.hist += "; " + cmd
-		if self.__parent is not None:  self.__parent.addHist(cmd)
+		self.hist += ("; " if len(self.hist) else "") + cmd
+		if self.__parent is not None:
+			self.__parent.addHist(f"[{self.blkN}]"+cmd)
 		return self.hist
 
 	#+=========================================================================
@@ -383,7 +415,7 @@ class Block:
 		self.hexB = [self.nulV] * n           # hex bytes
 		self.text =  self.nulC  * n           # ascii text
 
-		self.addHist(f"{self.whoami()}.blank({n})")
+		self.addHist(f"blank({n})")
 		self.edit = None
 
 	#+=========================================================================
@@ -464,7 +496,6 @@ class Block:
 	#   poke(7, [65,66,67])
 	#
 	def  poke (self, offs=0,  val=-1):
-
 		if type(val) == str:
 			self.addHist(f"poke({offs},\"{val}\")")
 			val = val.replace(" ", "")
@@ -682,9 +713,32 @@ def dump_ (obj,  iprev="|  ",  istr=""):
 #++============================================================================ ========================================
 #++============================================================================ ========================================
 #++============================================================================ ========================================
-#def  mfcIdentify ():
-#	pass
-#
+def  mfcIdentify ():
+	# load a one-off/stand-alone block
+	blk0 = Block()
+	blk0.rdbl(0, quiet=True)
+	if not blk0.rdOK:
+		print(f"Failed to read Manufacturing Data (Block #0)")
+		return False
+
+	match = []
+	for mfc in MFC_ALL:
+		cls = mfc()
+		nm = cls.__class__.__name__
+		print(f"{nm} ", end='')
+		if hasattr(cls, 'match'):
+			print(f"match ", end='')
+			if cls.match(blk0):
+				print(f" ( ok )")
+				match.append((nm, mfc))
+			else:
+				print(f" ( fail )")
+		else:
+			print(f" nomatch")
+
+	return match
+
+
 #++============================================================================ ========================================
 def  main ():
 #	if not checkVer():
@@ -711,8 +765,20 @@ def  main ():
 	else:
 		log.say(blk0.to_json())
 
-#	# Idenitfy the card from the manufacturing data
-#	mfcIdentify()
+	# Idenitfy the card from the manufacturing data
+	match = mfcIdentify()
+	if   len(match) == 0:
+		print("No Chip Signature matches found")
+	elif len(match) == 1:
+		print(f"Chip Signature matches: {match[0][0]}")
+		myCard = match[0][1]()
+	else:
+		names = []
+		names.append(m[0] for m in match)
+		print(f"Problem: Multiple Chip Signatures match: {names}")
+
+	dump(myCard)
+	sys.exit()
 
 	uid = blk0.hexC[:8]
 	dpath = getPref(Pref.DumpPath) + os.path.sep
