@@ -1,3 +1,8 @@
+"""
+	#-   Code in global space
+	#%%  Class defintion
+	#%+  Method defintion
+"""
 #!/usr/bin/env python3   
 
 # ------------------------------------------------------------------------------
@@ -13,8 +18,9 @@ import json
 import datetime
 import gc
 
-#============================================================================== ========================================
-# optional color support .. `pip install ansicolors`
+#+-============================================================================ ========================================
+# Optional color support .. `pip install ansicolors`
+#
 try:
     from colors import color
 except ModuleNotFoundError:
@@ -22,27 +28,26 @@ except ModuleNotFoundError:
         _ = fg
         return str(s)
 
-#++============================================================================ ========================================
-#++============================================================================ ========================================
-#++============================================================================ ========================================
-#++============================================================================ ========================================
+#============================================================================== ========================================
+#                                                                                PM3 Preferences
+#============================================================================== ========================================
 class Pref:
 	DumpPath  = "file.default.dumppath"
 	SavePath  = "file.default.savepath"
 	TracePath = "file.default.tracepath"
 
-#%=============================================================================
+#+=============================================================================
 def  getPref (pref):
 	p.console("prefs show --json")
 	prefs = json.loads(p.grabbed_output)
 	return prefs[pref]
 
-#++============================================================================ ========================================
-#++============================================================================ ========================================
-#++============================================================================ ========================================
-#++============================================================================ ========================================
+#============================================================================== ========================================
+#                                                                                PM3 CLI Interface
+#============================================================================== ========================================
 p = pm3.pm3()
 
+#+=============================================================================
 def  pm3Call (cmd,  end='\n',  quiet=False):
 	if quiet is not True:
 		log.say(f"`{cmd}`", end=end)
@@ -50,11 +55,14 @@ def  pm3Call (cmd,  end='\n',  quiet=False):
 	pCap = p.grabbed_output
 	return pRes, pCap
 
-#++============================================================================ ========================================
-#++============================================================================ ========================================
-#++============================================================================ ========================================
+#%%============================================================================ ========================================
+# A MiFare Classic card has Sectors of Blocks                                    MFClassic:  Base Class
+#
+# You will probably never instantiate one these Base Classes directly
+#   but if you do, notice that the arguments are in a different order
+#   from those provided to an instatiation of a Card Class
 #============================================================================== ========================================
-class MFClassic:
+class  MFClassic:
 	def  __init__ (self,  chip="UNKNOWN",  name="Data"):
 		self.chip  = chip   # NFC chip ID
 		self.name  = name   # friendly name
@@ -62,7 +70,9 @@ class MFClassic:
 		self.clear()
 		self.setup()
 
-	#+=========================================================================
+	#%+========================================================================
+	# (Re)initialise the Card (with 0 sectors)
+	#
 	def  clear (self):
 		if 'self.sec' in locals():
 			for s in self.sec:
@@ -76,16 +86,28 @@ class MFClassic:
 
 		self.hist = ""  # command history
 
-	#+=========================================================================
+	#%+========================================================================
+	# Return the edit history for the card
+	#
 	def  history (self):
 		return self.hist
 
-	#+=========================================================================
+	#%+========================================================================
+	# Add "cmd" to Card history log
+	#
+	# Returns the FULL Card history log
+	#
 	def  addHist (self, cmd):
 		self.hist += "; " + cmd
-		return self.hist
+		return self.history()
 
-	#+=========================================================================
+	#%+========================================================================
+	# Add sectors to a 
+	# You MAY specify a number of Blocks. And, if do...
+	#   You MAY also specify a number of bytes-per-Block (default=16)
+	#
+	# Returns a tuple of (SectorCount, BlockCount)
+	#
 	def  addSec (self,  sectors=1,  blocks=0,  bytes=16):
 		for _ in range(sectors):
 			s = Sector(blocks, bytes, parent=self)
@@ -98,167 +120,266 @@ class MFClassic:
 				self.bCnt += 1
 			self.blk.extend(s.blocks())
 
-		return self.sCnt, self.bCnt
+		return (self.secCnt(), self.blkCnt())
 
-	#+=========================================================================
+	#%+========================================================================
+	# Return the number of Sectors on the Card
+	#
 	def  secCnt (self):
 		return self.sCnt
 
-	#+=========================================================================
-	# All Sectors on the card as a single contiguous list
+	#%+========================================================================
+	# Return ALL Sectors on the Card as a single contiguous list[]
+	# (Useful for serialisation)
+	#
 	def  sectors (self):
 		return self.sec
 
-	#+=========================================================================
-	# Sectors may not be contiguous (eg. RF08S)
+	#%+========================================================================
+	# Return Sector number 'n'
+	# IF Sectors are NOT numbered contiguously (eg. RF08S),
+	#   you MUST override this function
+	#
 	def  sector (self,  n=0):
 		if 0 <= n < sCnt:  return self.sec[n]
 		else:              return None
 
-	#+=========================================================================
+	#%+========================================================================
+	# Return the number of Block on the Card
+	#
 	def  blkCnt (self):
 		return self.bCnt
 
-	#+=========================================================================
-	# All Blocks on the card as a single contiguous list
+	#%+========================================================================
+	# Return ALL Blocks on the Card as a single contiguous list[]
+	# (Useful for serialisation)
+	#
 	def  blocks (self):
 		return self.sblk
 
-	#+=========================================================================
+	#%+========================================================================
+	# Return Block number 'n'
+	# IF Blocks are NOT numbered contiguously (eg. RF08S),
+	#   you MUST override this function
+	#
 	# Blocks may not be contiguous (eg. RF08S)
+	#
 	def  block (self,  n=0):
 		if 0 <= n < bCnt:  return self.blk[n]
 		else:              return None
 
-	#+=========================================================================
+	#%+========================================================================
+	# This Method MUST be overridden in the inheriting Class
+	# It will typically add the Sectors, Blocks, and other Card-specific data
+	#
 	def  setup (self):
 		pass
 
-	#+=========================================================================
-	def  uid (self,  sz=4):
-		return self.blk[0].hexP[:3*sz],  self.blk[0].hexB[:sz], 
+	#%+========================================================================
+	# Returns a tuple of (BCC, [N]UID) [BCC == [N]UID Checksum]
+	#
+	# This default Method retrieves a 4-byte NUID (+BCC)
+	# It MAY be overridden (eg. for 7 or 10 byte UIDs)
+	#
+	def  uid (self):
+		return (self.blk[0].hexP[:3*sz],  self.blk[0].hexB[:sz])
 
-#++============================================================================ ========================================
-#++============================================================================ ========================================
-#++============================================================================ ========================================
-#    type = f"[{fida:02X}:{fidb:02X}]"            # type/name
- #   if fidb == 0x90:
-  #      if fida == 0x01 or fida == 0x03 or fida == 0x04:
-   #         type += " - Fudan FM11RF08S"
-    #        is08S = True
-     #
-#    elif fidb == 0x1D:
-#        if fida == 0x01 or fida == 0x02 or fida == 0x03:
-#            type += " - Fudan FM11RF08"
-#
-#    elif fidb == 0x91 or fidb == 0x98:
-#        type += " - Fudan FM11RF08 (never seen in the wild)"
-#
-#    else:
-#        type += " - Unknown (please report)"
+#%%============================================================================ ========================================
+# DEMO - Quite simple a programming and test example                             MFClassic( MFC_DEMO )
 #============================================================================== ========================================
-# A 1K card with a backdoor key
-#
+class  MFC_DEMO(MFClassic):
+	def  __init__ (self,  name="Data",  chip="DEMO"):
+		#
+		# You MAY provide a list of known backdoor keys
+		# If there are none you may either omit this definition
+		#   or define an empty list. eg.  bdKey = []
+		# The keys are formatted as a non-padded string of Hex characters
+		#
+#		self.bdKey = []
+#		self.bdKey = ["123456789ABC"]
+#		self.bdKey = ["123456789ABC", "123456789ABC"]
+
+		# NB. The argument order is swapped in the Base Class
+		super().__init__(chip=chip, name=name)  
+
+	#%+========================================================================
+	# This OPTIONAL Method will examine the data from the provided Block #0
+	# and try to establish if the signature matches this Card Variant
+	#
+	# Return: True/False
+	#
+#	def  match (self,  blk0):
+# This is actually (by means of an example) the FM11RF08S signture
+#		if (blk0.hexB[15] == 0x90) and (blk0.hexB[8] in [0x01, 0x03, 0x04]):
+#			return True
+#		return False
+
+	#%+========================================================================
+	# The setup() Method SHOULD be provided 
+	# It will typically add the correct number of Sectors & Blocks to the card
+	# ...But who knows what the future holds :-)
+	#
+	def setup (self):
+# Eg. This adds a (common, 1K) 16 sectors, each of 4 blocks, each containing 16 bytes
+		self.addSec(sectors=16, blocks=4, bytes=16)
+
+	#%+========================================================================
+	# IF your Sectors ARE numbered contiguously,
+	#    you do NOT need to override the sector() function
+	#
+	# myCard   = MFC_DEMO("myDemo")
+	# sectorNr = 7
+	# mySector = myCard.sector(sectorNr)
+	#
+	# Some cards are do NOT have contiguously numbered Sectors
+	#   so you are advised NOT to use:
+	# mySector = myCard.sec[sectorNr]
+	#
+	# Yes, I COULD have made 'sec' Private - but I chose not to because
+	#   a) I opted to allow the developer the freedom to work as they wish
+	#   b) The dumpClass() function does not show Private data - else it explodes (try it!)
+	#
+#	def  sector (self,  n):
+# Eg. This is the FM11RF08S sector() code
+#		super().sector(n if 0 <= n <= 15 else (n-16))
+
+	#%+========================================================================
+	# IF your Blocks ARE numbered contiguously,
+	#    you do NOT need to override the block() function
+	#
+	# myCard   = MFC_DEMO("myDemo")
+	# blockNr  = 53
+	# myBlock  = myCard.block(blockNr)
+	#
+	# Some cards are do NOT have contiguously numbered Blocks
+	#   so you are advised NOT to use:
+	# myBlock  = myCard.blk[blockNr]
+	#
+#	def  block (self,  n):
+# Eg. This is the FM11RF08S block() code
+#		super().block(n if 0 <= n <= 63 else (n-64))
+
+
+#%%============================================================================ ========================================
+# FM11RF08 : A 1K MiFare Classic Card with a backdoor key                        MFClassic( MFC_FM11RF08 )
+#============================================================================== ========================================
 class  MFC_FM11RF08(MFClassic):
-	def  __init__ (self,  name="Data"):
-		self.bdKey = ["A31667A8CEC1"]  # backdoor keys
+	def  __init__ (self,  name="Data",  chip="FM11RF08"):
+		self.bdKey = ["A31667A8CEC1"]  # Backdoor Key
 
-		super().__init__(          \
-			chip  = "FM11RF08",    \
-			name  = name,          \
-		)
+		super().__init__(chip=chip, name=name)
 
-	#+=========================================================================
+	#%+========================================================================
+	# Signature match
+	#
 	def  match (self,  blk0):
 		if (blk0.hexB[15] == 0x1D) and (blk0.hexB[8] in [0x01, 0x02, 0x03]):
 			return True
 		return False
 
-	#+=========================================================================
+	#%+========================================================================
+	# 16 Sectors, each of 4 blocks, each of 16 bytes
+	#
 	def setup (self):
 		self.addSec(sectors=16, blocks=4, bytes=16)
 
+#%%============================================================================ ========================================
+# FM11RF08_RARE : A 1K MiFare Classic Card not previously seen in the wild       MFClassic( MFC_FM11RF08_RARE )
+#     The only KNOWN difference between the 'common' and 'rare' FM11RF08 Cards
+#     is the signature ...This knowledge was extracted from the Supply-Chain
+#     Validation phone app provided by Fudan [@doegox]
 #============================================================================== ========================================
+class  MFC_FM11RF08_RARE(MFC_FM11RF08):
+	def  __init__ (self,  name="Data",  chip="FM11RF08/RARE"):
+		super().__init__(name=name, chip=chip)
+
+	#%+========================================================================
+	# Signature matching algorithm
+	#
+	def  match (self,  blk0):
+		if (blk0.hexB[15] == 0x1D) and (blk0.hexB[8] in [0x01, 0x02, 0x03]):
+			return True
+		return False
+
+#%%============================================================================ ========================================
+# FM11RF08S : A 1K MFC Card with non-contiguous Sector and Block numbering       MFClassic( MFC_FM11RF08S )
 #============================================================================== ========================================
-# a 4K card with variable sector sizes
-#
-class  MFC_FM11RF32N_18(MFClassic):
-	def  __init__ (self,  name="Data"):
-		self.bdKey = ["518b3354E760"]  # backdoor keys
-
-		super().__init__(           \
-			chip  = "FM11RF32N/18", \
-			name  = name,           \
-		)
-
-	#+=========================================================================
-	def setup(self):
-		self.addSec(sectors=32, blocks= 4, bytes=16)
-		self.addSec(sectors= 8, blocks=16, bytes=16)
-
-#============================================================================== ========================================
-#============================================================================== ========================================
-# a 4K card with consistent sector sizes
-#
-class  MFC_FM11RF32N_20(MFClassic):
-	def  __init__ (self,  name="Data"):
-		self.bdKey = ["518b3354E760"]  # backdoor keys
-
-		super().__init__(           \
-			chip  = "FM11RF32N/20", \
-			name  = name,           \
-		)
-
-	#+=========================================================================
-	def setup (self):
-		self.addSec(sectors=64, blocks= 4, bytes=16)
-
-#============================================================================== ========================================
-#============================================================================== ========================================
-# A 1K card with non-contiguous Sector (and Block) numbering : 
-#    {0..15,[16..31], 32, 33}, {0..63, [64..127], 128..135}
-#
 class  MFC_FM11RF08S(MFClassic):
-	def  __init__ (self,  name="Data"):
-		self.bdKey = ["A396EFA4E24F"]  # backdoor keys
+	def  __init__ (self,  name="Data",  chip="FM11RF08S"):
+		self.bdKey = ["A396EFA4E24F"]  # Backdoor Key
 
-		super().__init__(          \
-			chip  = "FM11RF08S",   \
-			name  = name,          \
-		)
+		super().__init__(name=name, chip=chip)
 
-	#+=========================================================================
+	#%+========================================================================
+	# Signature matching algorithm
+	#
 	def  match (self,  blk0):
 		if (blk0.hexB[15] == 0x90) and (blk0.hexB[8] in [0x01, 0x03, 0x04]):
 			return True
 
-	#+=========================================================================
+	#%+========================================================================
+	# The Sectors & Blocks on the FM11RF08S are non-contiguous
+	#   Sectors:{0..15, [16.. 31],  32,  33}
+	#   Blocks :{0..63, [64..127], 128..135}
+	#
 	def setup (self):
 		self.addSec(sectors=18, blocks=4, bytes=16)
 		for sn in range(16, 17+1):  self.sec[sn].secN = sn +16
 		for bn in range(64, 71+1):  self.blk[bn].blkN = bn +64
 
-	#+=========================================================================
+	#%+========================================================================
 	def  sector (self,  n):
 		super().sector(n if 0 <= n <= 15 else (n-16))
 
-	#+=========================================================================
+	#%+========================================================================
 	def  block (self,  n):
 		super().block(n if 0 <= n <= 63 else (n-64))
 
+#%%============================================================================ ========================================
+# FM11RF32N/20 : A 4K card with consistent sector sizes                          MFClassic( MFC_FM11RF32N_20 )
+# The "/20" is the SAK
 #============================================================================== ========================================
-#============================================================================== ========================================
-class  MFC_DEMO(MFClassic):
-	def  __init__ (self,  name="Data"):
-		super().__init__(  \
-			chip = "DEMO", \
-			name = name,   \
-		)
+class  MFC_FM11RF32N_20(MFClassic):
+	def  __init__ (self,  name="Data",  chip="FM11RF32N/20"):
+		self.bdKey = ["518b3354E760"]  # Backdoor Key
 
-	#+=========================================================================
+		super().__init__(chip=chip, name=name)
+
+	#%+========================================================================
+	# Signature matching algorithm
+	#
+	def  match (self,  blk0):
+		sak = blk0.hexB[5]  # I need test cards with 7 & 10 
+		if (sak == 0x18) and (blk0.hexB[8] in [0x01, 0x03, 0x04]):
+			return True
+
+	#%+========================================================================
+	# 64 Sectors, each of 4 Blocks, each of 16 Bytes
+	#
+	def setup (self):
+		self.addSec(sectors=64, blocks= 4, bytes=16)
+
+#%%============================================================================ ========================================
+# FM11RF32N/18 : A 4K card with non-consistent sector sizes                      MFClassic( MFC_FM11RF32N_18 )
+# The "/18" is the SAK
+#============================================================================== ========================================
+class  MFC_FM11RF32N_18(MFClassic):
+	def  __init__ (self,  name="Data",  chip="FM11RF32N/18"):
+		self.bdKey = ["518b3354E760"]  # Backdoor Key
+
+		super().__init__(chip=chip, name=name)
+
+	#%+========================================================================
+	# This Card has: 32 Sectors, each of  4 Blocks, each of 16 Bytes
+	#   followed by:  8 Sectors, each of 16 Blocks, each of 16 Bytes
+	#
 	def setup(self):
-		self.addSec(sectors=2, blocks=2, bytes=3)
+		self.addSec(sectors=32, blocks= 4, bytes=16)
+		self.addSec(sectors= 8, blocks=16, bytes=16)
 
+#============================================================================== ========================================
+# If you create a new card, remember to add it to this list!                     MFC_ALL
+# For speed, put the most common Cards at the top of the list!
 #++============================================================================ ========================================
 MFC_ALL = [           \
 	MFC_FM11RF08,     \
@@ -268,9 +389,8 @@ MFC_ALL = [           \
 	MFC_DEMO, \
 ]
 
-#++============================================================================ ========================================
-#++============================================================================ ========================================
-#++============================================================================ ========================================
+#%%============================================================================ ========================================
+# A Sector has Blocks                                                            Sector
 #============================================================================== ========================================
 class Sector:
 	def  __init__ (self,  blocks=0,  bytes=16,  parent=None):
@@ -280,9 +400,12 @@ class Sector:
 		if blocks > 0:
 			self.addBlk(blocks, bytes, parent=self)
 
-	#+=========================================================================
+	#%+========================================================================
+	# (Re)initialise a Sector (to be empty)
+	# This will also clear all the Blocks in the Sector
+	#
 	def  clear (self):
-		if 'self.blk' in locals():
+		if 'self.blk' in locals():  # will not exist on first call
 			for b in self.blk:
 				b.clear()
 
@@ -290,36 +413,48 @@ class Sector:
 		self.bCnt = 0   # block count
 		self.blk  = []  # list of blocks {0..bCnt}
 
-		self.keyA = ""  # eg. "112233445566"
-		self.keyB = ""
-		self.bits = ""
-
 		self.hist = ""  # edit history
 
-	#+=========================================================================
+	#%+========================================================================
+	# Return the edit history for the card
+	#
 	def  history (self):
 		return self.hist
 
-	#+=========================================================================
+	#%+========================================================================
+	# Add "cmd" to Card history log
+	#
+	# Returns the FULL Sector history log
+	#
 	def  addHist (self, cmd):
 		self.hist += ("; " if len(self.hist) else "") + cmd
 		if self.__parent is not None:
+			# prepend the Sector number before passing it to the parent
 			self.__parent.addHist(f"[{self.secN}]"+cmd)
-		return self.hist
+		return self.history()
 
-	#+=========================================================================
-	def  addBlk (self,  blocks=1,  bytes=16,  parent=None):
+	#%+========================================================================
+	# Add one-or-more Blocks, of n bytes, to a Sector
+	#
+	# Returns the new BlockCount (for this Sector)
+	#
+	def  addBlk (self,  blocks=1,  bytes=16):
 		for _ in range(blocks):
-			self.blk.append(Block(bytes, parent=parent))
+			self.blk.append(Block(bytes, parent=self))
 		self.bCnt += blocks
 
-		return self.bCnt
+		return self.blkCnt()
 
 	#+=========================================================================
+	# Returns the number of Blocks in the Sector
+	#
 	def  blkCnt (self):
 		return self.bCnt
 
 	#+=========================================================================
+	# Returns the Blocks in the Sector as a single contiguous list
+	# (Useful for serialisation)
+	#
 	def  blocks (self):
 		return self.blk
 
