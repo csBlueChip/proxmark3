@@ -1,7 +1,8 @@
 """
-	#-   Code in global space
+	#*   Code in global space
 	#%%  Class defintion
 	#%+  Method defintion
+	#!   warning/todo
 """
 #!/usr/bin/env python3   
 
@@ -42,7 +43,7 @@ def  getPref (pref):
 	prefs = json.loads(p.grabbed_output)
 	return prefs[pref]
 
-#============================================================================== ========================================
+#*============================================================================= ========================================
 #                                                                                PM3 CLI Interface
 #============================================================================== ========================================
 p = pm3.pm3()
@@ -70,7 +71,7 @@ class  MFClassic:
 		self.clear()
 		self.setup()
 
-	#%+========================================================================
+	#%+======================================================================== clear
 	# (Re)initialise the Card (with 0 sectors)
 	#
 	def  clear (self):
@@ -86,13 +87,13 @@ class  MFClassic:
 
 		self.hist = ""  # command history
 
-	#%+========================================================================
+	#%+======================================================================== history
 	# Return the edit history for the card
 	#
 	def  history (self):
 		return self.hist
 
-	#%+========================================================================
+	#%+======================================================================== addHist
 	# Add "cmd" to Card history log
 	#
 	# Returns the FULL Card history log
@@ -101,7 +102,7 @@ class  MFClassic:
 		self.hist += "; " + cmd
 		return self.history()
 
-	#%+========================================================================
+	#%+======================================================================== addSec
 	# Add sectors to a 
 	# You MAY specify a number of Blocks. And, if do...
 	#   You MAY also specify a number of bytes-per-Block (default=16)
@@ -122,20 +123,20 @@ class  MFClassic:
 
 		return (self.secCnt(), self.blkCnt())
 
-	#%+========================================================================
+	#%+======================================================================== secCnt
 	# Return the number of Sectors on the Card
 	#
 	def  secCnt (self):
 		return self.sCnt
 
-	#%+========================================================================
+	#%+======================================================================== sectors
 	# Return ALL Sectors on the Card as a single contiguous list[]
 	# (Useful for serialisation)
 	#
 	def  sectors (self):
 		return self.sec
 
-	#%+========================================================================
+	#%+======================================================================== sector
 	# Return Sector number 'n'
 	# IF Sectors are NOT numbered contiguously (eg. RF08S),
 	#   you MUST override this function
@@ -144,20 +145,20 @@ class  MFClassic:
 		if 0 <= n < sCnt:  return self.sec[n]
 		else:              return None
 
-	#%+========================================================================
+	#%+======================================================================== blkCnt
 	# Return the number of Block on the Card
 	#
 	def  blkCnt (self):
 		return self.bCnt
 
-	#%+========================================================================
+	#%+======================================================================== blocks
 	# Return ALL Blocks on the Card as a single contiguous list[]
 	# (Useful for serialisation)
 	#
 	def  blocks (self):
 		return self.sblk
 
-	#%+========================================================================
+	#%+======================================================================== block
 	# Return Block number 'n'
 	# IF Blocks are NOT numbered contiguously (eg. RF08S),
 	#   you MUST override this function
@@ -168,21 +169,196 @@ class  MFClassic:
 		if 0 <= n < bCnt:  return self.blk[n]
 		else:              return None
 
-	#%+========================================================================
+	#%+======================================================================== secAcl
+	# Return the ACL bits for the specified Sector - as an unpadded Hex String
+	# ...or None, if the Sector does exist, or does not have a Trailer,
+	#             or the bytes simply aren't present
+	#
+	# The location of these is (I believe) fixed as being 
+	#   bytes[6..8] of the last Block in the Sector
+	#
+	# This Method MAY be overridden by the Card specific Class
+	# ...I know of NO use case for this functionality
+	#
+	def  secAcl (self, n):
+		sec = self.sector(n)
+		if sec is None:  return None
+
+		blk = sec.trailer()
+		if blk is None:  return None
+
+		if (blk.lenB < 8):  return None
+
+		return blk.hexC[6*2:(8+1)*2]  # bytes {6..8}[3 bytes == 3*2 hex digits]
+
+	#%+======================================================================== aclIsValid
+	# Check if the supplied value is a valid ACL
+	#
+	# Returns: True/False
+	#
+	# This Method MAY be overridden by the Card specific Class
+	# ...I know of NO use case for this functionality
+	#
+	def  aclIsValid (self, acl):
+		b = valxToLst(acl)
+		if b is None:  return False
+
+		if not 3 <= len(b) <=4:  return False
+
+		if (b[0] &0x0F) != ~((b[1] &0xF0) >>4):  return False  // C1
+		if (b[2] &0x0F) != ~((b[0] &0xF0) >>4):  return False  // C2
+		if (b[1] &0x0F) != ~((b[2] &0xF0) >>4):  return False  // C3
+		// Byte 4 is (still) "reserved", so we do NOT check it
+
+		return True
+
+	#%+======================================================================== secAclSet
+	# Set the ACL bits for the specified Sector
+	#
+	# Returns Modified Sector, or None
+	#
+	# This Method MAY be overridden by the Card specific Class
+	# ...I know of NO use case for this functionality
+	#
+	def  secAclSet (self, n, acl):
+		sec = self.sector(n)
+		if sec is None:  return None
+
+		lstB, txt = valxToLst(acl)
+		if lstB is None:  return None
+
+		blk = sec.trailer()
+		if blk is None:  return None
+
+		if (blk.lenB < 8):  return None
+
+		if not self.aclIsValid(acl):  return None
+
+		self.addHist("secAclSet({n},{txt})")
+		sec.addHist("_aclSet({txt})")
+
+		if not blk.poke(6, lasB, 3):  return None
+
+		return sec
+
+	#%+======================================================================== secKey
+	# Return a Key for the specified Sector - as an unpadded Hex String
+	# ...or None, if the Sector does exist, or does not have a Trailer,
+	#             or the bytes simply aren't present
+	#
+	# The location of these is (I believe) fixed as being 
+	#   KeyA : bytes[ 0.. 5] of the last Block in the Sector
+	#   KeyB : bytes[10..15] of the last Block in the Sector
+	#
+	# This Method MAY be overridden by the Card specific Class
+	# ...I know of NO use case for this functionality
+	#
+	def  secKey (self, n, ab):
+		sec = self.sector(n)
+		if sec is None:  return None
+
+		blk = sec.trailer()
+		if blk is None:  return None
+
+		if ab == KeyA:
+			if (blk.lenB < 6):  return None
+			return blk.hexC[0*2:(5+1)*2]    # bytes { 0.. 5}[6 bytes == 6*2 hex digits]
+
+		elif ab == KeyB:
+			if (blk.lenB < 16):  return None
+			return blk.hexC[10*2:(15+1)*2]  # bytes {10..15}[6 bytes == 6*2 hex digits]
+
+		return None
+
+	#%+======================================================================== secKeySet
+	# Set a Key for the specified Sector
+	#
+	# Returns Modified Sector, or None
+	#
+	# This Method MAY be overridden by the Card specific Class
+	# ...I know of NO use case for this functionality
+	#
+	def  secKeySet (self, n, ab, key):
+		sec = self.sector(n)
+		if sec is None:  return None
+
+		lstB, txt = valxToLst(acl)
+		if lstB is None:  return None
+
+		blk = sec.trailer()
+		if blk is None:  return None
+
+		if ab == KeyA:
+			keyX = "KeyA"
+			offs = 0
+
+		elif ab == KeyB:
+			keyX = "KeyB"
+			offs = 10
+
+		if (blk.lenB < offs+6):  return None
+		if not blk.poke(offs, lstB, 6):  return None
+
+		self.addHist("secKeySet({n},{keyX},{txt})")
+		sec.addHist("_aclSet({keyX},{txt})")
+
+		return sec
+
+	#%+======================================================================== setup
 	# This Method MUST be overridden in the inheriting Class
 	# It will typically add the Sectors, Blocks, and other Card-specific data
 	#
 	def  setup (self):
 		pass
 
-	#%+========================================================================
-	# Returns a tuple of (BCC, [N]UID) [BCC == [N]UID Checksum]
+	#%+======================================================================== uid
+	# Returns a tuple of ([N]UID, BCC) [BCC == [N]UID Checksum]
+	#
+	#   UID is bytes {0..3}  ... returned as an PADDED hex string
+	#   BCC is byte  {4}     ... returned as an int
 	#
 	# This default Method retrieves a 4-byte NUID (+BCC)
-	# It MAY be overridden (eg. for 7 or 10 byte UIDs)
+	# It MAY be overridden (eg. for 7 or 10 byte UIDs)  #! I don't know how
 	#
 	def  uid (self):
-		return (self.blk[0].hexP[:3*sz],  self.blk[0].hexB[:sz])
+		return (self.blk[0].hexP[0*3:(3+1)*3],  self.blk[0].hexB[4])
+
+	#%+======================================================================== aclIsValid
+	# Check if the supplied UID matches the supplied BCC
+	#
+	# Returns: True/False
+	#
+	#	myCard = MFClassic()
+	#	myUID  = "69 96 e3 60"
+	#	myBCC  = "7C"
+	#	valid, calculated = myCard.uidIsValid(myUID, myBCC)
+	#	if valid is False:
+	#		if calculated < 0:
+	#			print("Bad UID")
+	#		else:
+	#			print(f"Checksum mismatch. Correct sum would be: {calculated}")
+	#	else:
+	#		print("Checksum matches UID")
+	#
+	# This Method MAY be overridden by the Card specific Class
+	# ...I know of NO use case for this functionality
+	#
+	def  uiddIsValid (self, uid, bcc=-1):
+		b = valxToLst(acl)
+		if b is None:  return (False, -1)        # uid is not a uid
+
+		if bcc = -1:
+			if len(b) != 5:  return (False, -2)  # BCC not provided
+			# extract BCC from UID
+			bcc = b[4]
+			b   = b[:-1]
+
+		if len(b) != 4:  return (False, -4)      # uid length != 4
+
+		chk = reduce(lambda x, y: x ^ y, b)      # perform XOR checksum
+
+		if chk == bcc:  return (False, chk)
+		else:           return (True, chk)
 
 #%%============================================================================ ========================================
 # DEMO - Quite simple a programming and test example                             MFClassic( MFC_DEMO )
@@ -350,7 +526,8 @@ class  MFC_FM11RF32N_20(MFClassic):
 	#
 	def  match (self,  blk0):
 		sak = blk0.hexB[5]  # I need test cards with 7 & 10 
-		if (sak == 0x18) and (blk0.hexB[8] in [0x01, 0x03, 0x04]):
+		if (sak == 0x20) and \
+		   (blk0.hexB[8:(15+1)] == [0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69]):
 			return True
 
 	#%+========================================================================
@@ -370,12 +547,47 @@ class  MFC_FM11RF32N_18(MFClassic):
 		super().__init__(chip=chip, name=name)
 
 	#%+========================================================================
+	# Signature matching algorithm
+	#
+	def  match (self,  blk0):
+		sak = blk0.hexB[5]  # I need test cards with 7 & 10 
+		if (sak == 0x18) and \
+		   (blk0.hexB[5:(15+1)] == [0x18, 0x02, 0x00, 0x46, 0x44, 0x53, 0x37, 0x30, 0x56, 0x30, 0x31]):
+			return True
+
+	#%+========================================================================
 	# This Card has: 32 Sectors, each of  4 Blocks, each of 16 Bytes
 	#   followed by:  8 Sectors, each of 16 Blocks, each of 16 Bytes
 	#
 	def setup(self):
 		self.addSec(sectors=32, blocks= 4, bytes=16)
 		self.addSec(sectors= 8, blocks=16, bytes=16)
+
+#%%============================================================================ ========================================
+# FM1208-10 : A "standard" 1K card                                               MFClassic( MFC_FM1208_10 )
+#============================================================================== ========================================
+class  MFC_FM1208-10(MFClassic):
+	def  __init__ (self,  name="Data",  chip="FM1208-10"):
+		self.bdKey = ["A31667A8CEC1"]  # Backdoor Key
+
+		super().__init__(chip=chip, name=name)
+
+	#%+========================================================================
+	# Signature matching algorithm
+	#
+	def  match (self,  blk0):
+		sak = blk0.hexB[5]  # I need test cards with 7 & 10 
+		if (sak == 0x28) and \
+		   (blk0.hexB[ 5:( 8+1)] == [0x28, 0x04, 0x00, 0x90]) and \
+		   (blk0.hexB[9]         in [0x01, 0x03, 0x04]) and \
+		   (blk0.hexB[10:(15+1)] == [0x15, 0x01, 0x00, 0x00, 0x00, 0x00]):
+			return True
+
+	#%+========================================================================
+	# 16 Sectors, each of 4 blocks, each of 16 bytes
+	#
+	def setup(self):
+		self.addSec(sectors=16, blocks=4, bytes=16)
 
 #============================================================================== ========================================
 # If you create a new card, remember to add it to this list!                     MFC_ALL
@@ -386,6 +598,7 @@ MFC_ALL = [           \
 	MFC_FM11RF08S,    \
 	MFC_FM11RF32N_20, \
 	MFC_FM11RF32N_18, \
+	MFC_FM1208-10,    \
 	MFC_DEMO, \
 ]
 
@@ -445,18 +658,81 @@ class Sector:
 
 		return self.blkCnt()
 
-	#+=========================================================================
+	#%+========================================================================
 	# Returns the number of Blocks in the Sector
 	#
 	def  blkCnt (self):
 		return self.bCnt
 
-	#+=========================================================================
+	#%+========================================================================
 	# Returns the Blocks in the Sector as a single contiguous list
 	# (Useful for serialisation)
 	#
 	def  blocks (self):
 		return self.blk
+
+	#%+========================================================================
+	# Returns the Sector Trailer
+	# This block holds the Keys {A, B} and the ACL bits
+	#   ...and some other byte I have yet to fully understand
+	#      I think it's just a byte of user data that nobody ever seems to use!
+	#
+	def  trailer (self):
+		if (self.blkCnt < 1):  return None
+		return self.blk[self.blkCnt -1]
+
+	#%+========================================================================
+	# Return the ACL bits for this Sector - as an unpadded Hex String
+	# ...or None, if :- 
+	#   a) the Sector does not have a Parent*
+	#   b) the Sector has no Blocks
+	#   c) the Trailer Block does not contain enough Bytes
+	#
+	# *If you wish to play with the ACL of an "orphan" sector...
+	# Instead of:
+	#    mySector = Sector()
+	# Give it a foster parent:
+	#    foster = MFClassic()
+	#    foster.addSec(sectors=1, blocks=4, bytes=16)
+	#    mySector = foster.sector(1)
+	# This is because ACL bits may be handled differently on different cards
+	#
+	def  acl (self):
+		if (self.parent != None) and (hasattr(self.parent, 'secAcl'):
+			return self.parent.secAcl(self.secN)
+		return None
+
+	#%+========================================================================
+	# Attempts to set the ACL bits
+	#
+	# Returns: Modified Sector, or None
+	#   See self.acl() notes on failure conditions and orphan sectors
+	#
+	def  aclSet (self,  acl):
+		if (self.parent != None) and (hasattr(self.parent, 'secAclSet'):
+			return self.parent.secAclSet(self.secN, acl)
+		return None
+
+	#%+========================================================================
+	# Return the Keys for this Sector - as an unpadded Hex String
+	# ...or None if :-
+	#   See self.acl() notes on failure conditions and orphan sectors
+	#
+	def  key (self, ab):
+		if (self.parent != None) and (hasattr(self.parent, 'secKey'):
+			return self.parent.secKey(self.secN, ab)
+		return None
+
+	#%+========================================================================
+	# Attempts to set a Key
+	#
+	# Returns: Modified Sector, or None
+	#   See self.acl() notes on failure conditions and orphan sectors
+	#
+	def  keySet (self,  ab,  key):
+		if (self.parent != None) and (hasattr(self.parent, 'secKeySet'):
+			return self.parent.secKeySet(self.secN, ab, key)
+		return None
 
 #++============================================================================ ========================================
 #++============================================================================ ========================================
@@ -630,27 +906,27 @@ class Block:
 	#   poke(5, "1122")
 	#   poke(7, [65,66,67])
 	#
-	def  poke (self, offs=0,  val=-1):
-		if type(val) == str:
-			self.addHist(f"poke({offs},\"{val}\")")
-			val = val.replace(" ", "")
-			if not all(c in set("0123456789abcdefABCDEF") for c in val):
-				return False
-			val = list(bytes.fromhex(val))
+	# An optional 'limit' may be imposed by the user to stop buffer overruns
+	#
+	def  poke (self, offs,  val,  limit=-1):
+		lstB, txt = valxToList(val)
+		if lstB == None:  return False
+		if not all(0x00 <= n <= 0xFF for n in lstB):  return False
 
-		elif type(val) == int:
-			self.addHist(f"poke({offs},{val:#X})".replace("X","x"))
-			val = list(bytes.fromhex(hex(val)[2:]))
+		if limit < 0:
+			lstr  = ""
+			limit = len(lstB)
+		else
+#			if limit > lenB:  full limit will not be used
+#			if limit < lenB:  value will be truncated
+			lstr  = ",{limit}"
 
-		elif isinstance(val, list):
-			pass
+		for i in range(0, limit):
+			if limit <= 0:  break
+			self.__poke(offs+i, put[i])
+			limit -= 1
 
-		else:
-			return False
-
-		for i in range(0, len(val)):
-			self.__poke(offs+i, val[i])
-
+		self.addHist(f"poke({offs},{txt}{lstr})")
 		return True
 
 	#+=========================================================================
@@ -770,7 +1046,42 @@ class Log:
 
 log = Log()
 
-#++============================================================================ ========================================
+#+============================================================================= ========================================
+# Convert the input "value" to a list of bytes
+#
+# Returns a tuple: (listOfBytes[], stringRepresentation)
+#    The "string" is useful for logging
+#
+# Here are some examples:
+#                      |_String_______
+#   poke(0, 0xff)        0xFF
+#   poke(1, 0xEEDD)      0xEEDD
+#   poke(3, "AA BB")     "AA BB"
+#   poke(5, "1122")      "1122"
+#   poke(7, [65,66,67])  "[65,66,67]"
+#
+def  valxToList (valX)
+	#! should I be using `isinstance(x, thing)` ?
+	if type(valX) == str:
+		lstB = valX.replace(" ", "")
+		if not all(c in set("0123456789abcdefABCDEF") for c in lstB):
+			return None
+		lstB = list(bytes.fromhex(lstB))
+		txt = f"\"{valX}\""
+
+	elif type(valX) == int:
+		lstB = list(bytes.fromhex(hex(valX)[2:]))
+		txt = f"{valX:#X}".replace("X","x"))
+
+	elif type(valX) == list:
+		lstB = valX
+		txt = f"{valX}"
+
+	else:
+		return None
+
+	return (lstB, txt)
+
 #++============================================================================ ========================================
 import inspect
 
