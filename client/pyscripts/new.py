@@ -86,9 +86,10 @@ def  pm3Call (cmd,  end='\n',  quiet=False):
 #   from those provided to an instatiation of a Card Class
 #============================================================================== ========================================
 class  MFClassic:
-	def  __init__ (self,  chip="UNKNOWN",  name="Data"):
-		self.chip  = chip   # NFC chip ID
-		self.name  = name   # friendly name
+	def  __init__ (self,  chip="UNKNOWN",  name="Data",  desc=""):
+		self.chip = chip   # NFC chip ID
+		self.name = name   # friendly name
+		self.desc = desc   # optional descrptive text
 
 		self.clear()
 		self.setup()
@@ -101,9 +102,12 @@ class  MFClassic:
 			for s in self.sec:
 				s.clear()
 
-		self.sak  = []  # Select Acknowledge
+		self.note = []  # somewhere to take notes
+
+		self.sak  = -1  # Select Acknowledge
 		self.atqa = []  # Answer To reQuest
-		self.ats  = []  # Answer To Select
+		self.ats  = []  #! Answer To Select (seemingly present on SOME applicable cards!)
+		self.prng = ""  # weak/hard/static/etc.
 
 		self.sCnt = 0   # total sector count
 		self.bCnt = 0   # total block count
@@ -112,6 +116,29 @@ class  MFClassic:
 		self.blk  = []  # sequential and contiguous list of all blocks
 
 		self.hist = ""  # command history
+
+	#%+======================================================================== get14a
+	def  get14a (self):
+		self.atqa, self.sak, self.prng = mfxGet14a()
+
+	#%+======================================================================== notes
+	# Return the notes for the card
+	#
+	def  notes (self):
+		return self.note
+
+	#%+======================================================================== note
+	# Add a note to the card
+	#
+	def  note (self, txt):
+		note += [text]
+		return self.note
+
+	#%+======================================================================== noteClr
+	# Clear all notes
+	#
+	def  noteClr (self):
+		self.note = []
 
 	#%+======================================================================== history
 	# Return the edit history for the card
@@ -392,7 +419,7 @@ class  MFClassic:
 # DEMO - Quite simple a programming and test example                             MFClassic( MFC_DEMO )
 #============================================================================== ========================================
 class  MFC_DEMO(MFClassic):
-	def  __init__ (self,  name="Data",  chip="DEMO"):
+	def  __init__ (self,  name="Data",  chip="DEMO",  desc=""):
 		#
 		# You MAY provide a list of known backdoor keys
 		# If there are none you may either omit this definition
@@ -554,7 +581,12 @@ class  MFC_FM11RF08S(MFClassic):
 # The "/20" is the SAK
 #============================================================================== ========================================
 class  MFC_FM11RF32N_20(MFClassic):
-	def  __init__ (self,  name="Data",  chip="FM11RF32N/20"):
+	def  __init__ (self,       \
+		name="myData",         \
+		chip="FM11RF32N/20",   \
+		desc="(64*4)*16 = 4K"  \
+	):
+
 		self.bdKey = [(4, "518b3354E760")]  # Backdoor Key
 
 		super().__init__(chip=chip, name=name)
@@ -579,7 +611,12 @@ class  MFC_FM11RF32N_20(MFClassic):
 # The "/18" is the SAK
 #============================================================================== ========================================
 class  MFC_FM11RF32N_18(MFClassic):
-	def  __init__ (self,  name="Data",  chip="FM11RF32N/18"):
+	def  __init__ (self,                \
+		name="myData",                  \
+		chip="FM11RF32N/18",            \
+		desc="((32*4)+(8*16))*16 = 4K"  \
+	):
+
 		self.bdKey = [(4, "518b3354E760")]  # Backdoor Key
 
 		super().__init__(chip=chip, name=name)
@@ -596,6 +633,7 @@ class  MFC_FM11RF32N_18(MFClassic):
 	#%+======================================================================== setup
 	# This Card has: 32 Sectors, each of  4 Blocks, each of 16 Bytes
 	#   followed by:  8 Sectors, each of 16 Blocks, each of 16 Bytes
+	#                40                 256               4096 (4K)
 	#
 	def setup(self):
 		self.addSec(sectors=32, blocks= 4, bytes=16)
@@ -1243,6 +1281,36 @@ def dump_ (obj,  iprev="|  ",  istr=""):
 			print(f"{indent}{attr}: {entryWrap}")
 
 #+============================================================================= ========================================
+import re
+
+def  mfcGet14a ():
+	atqa = None
+	sak  = None
+	prng = None
+
+	pRes, pCap = pm3Call("hf 14a info")
+	if pRes != 0:
+		log.say("Read fail")
+	else:
+		for lin in pCap.split('\n'):
+			if atqa == None:
+				r = r"ATQA: (.. ..)"
+				m = re.search(r, lin)
+				if m:  atqa = m.group(1)
+
+			if sak == None:
+				r = r"SAK: (.. \[.\])"
+				m = re.search(r, lin)
+				if m:  sak = m.group(1)
+
+			if prng == None:
+				r = r"tion\.\.\.\.\.\.\. (.*)"
+				m = re.search(r, lin)
+				if m:  prng = m.group(1)
+
+	return (atqa, sak, prng)
+
+#+============================================================================= ========================================
 def  mfcIdentify ():
 	# load a one-off/stand-alone block
 	blk0 = Block()
@@ -1250,6 +1318,9 @@ def  mfcIdentify ():
 	if not blk0.rdOK:
 		log.say(f"Failed to read Manufacturing Data (Block #0)")
 		return False
+
+	atqa, sak, prng = mfcGet14a();
+	print(f"{atqa}/{sak}/{prng}")
 
 	match = []
 	for mfc in MFC_ALL:
@@ -1318,10 +1389,18 @@ def  main ():
 #	args  = parseCli()
 
 
-#	for i in range (15):
-#		print(format(i>>4, "04b") + "'" + format(i&15, "04b")+ "  ", end='')
-#		pRes, pCap = pm3Call(f"hf mf rdbl --blk 0 --key A31667A8CEC1 -c {i}", end='')
-#		print("  **********" if pRes==0 else "  --")
+#	for i in range (256):
+#		print(format(i, "02X").replace("X","x") + "  " + format(i>>4, "04b") + "'" + format(i&15, "04b")+ f"  {i:#3d}  ", end='')
+#		pRes, pCap = pm3Call(f"hf mf rdbl --blk {i}", end='', quiet=True)
+ #
+#		for lin in pCap.split('\n'):
+#			if (" | " in lin) and (lin[56] != " "):
+#				print(lin)
+#				break
+#		else:
+#			print("Read Fail")
+#		
+ #
 #	sys.exit(0)
 
 
@@ -1404,7 +1483,7 @@ def  main ():
 		else:
 			log.say(f"Fail, should be {chk}")
 
-	sys.exit()
+#	sys.exit()
 
 	#-----------------------------------------------------
 	# Idenitfy the card from the manufacturing data
