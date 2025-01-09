@@ -62,17 +62,16 @@ class Pref:
 
 #+=============================================================================
 def  getPref (pref):
+	p = pm3.pm3()
 	p.console("prefs show --json")
 	prefs = json.loads(p.grabbed_output)
 	return prefs[pref]
 
-#*============================================================================= ========================================
+#+============================================================================= ========================================
 #                                                                                PM3 CLI Interface
 #============================================================================== ========================================
-p = pm3.pm3()
-
-#+=============================================================================
 def  pm3Call (cmd,  end='\n',  quiet=False):
+	p = pm3.pm3()
 	if quiet is not True:
 		log.say(f"`{cmd}`", end=end)
 	pRes = p.console(cmd)
@@ -371,7 +370,9 @@ class  MFClassic:
 	# ...I know of NO use case for this functionality
 	#
 	def  uidIsValid (self, uid, bcc=-1):
-		b = valxToList(uid)
+		print(uid)
+		print(bcc)
+		b, txt = valxToList(uid)
 		if b is None:  return (False, -1)        # uid is not a uid
 
 		if bcc == -1:
@@ -399,8 +400,8 @@ class  MFC_DEMO(MFClassic):
 		# The keys are formatted as a non-padded string of Hex characters
 		#
 #		self.bdKey = []
-#		self.bdKey = ["123456789ABC"]
-#		self.bdKey = ["123456789ABC", "123456789ABC"]
+#		self.bdKey = [(4, "123456789ABC")]
+#		self.bdKey = [(4, "123456789ABC"), (4, "123456789ABC")]
 
 		# NB. The argument order is swapped in the Base Class
 		super().__init__(chip=chip, name=name)  
@@ -468,7 +469,17 @@ class  MFC_DEMO(MFClassic):
 #============================================================================== ========================================
 class  MFC_FM11RF08(MFClassic):
 	def  __init__ (self,  name="Data",  chip="FM11RF08"):
-		self.bdKey = ["A31667A8CEC1"]  # Backdoor Key
+		# Backdoor Key(s)
+		self.bdKey = [ \
+			( 4, "A31667A8CEC1"), \
+			( 5, "A31667A8CEC1"), \
+			( 6, "A31667A8CEC1"), \
+			( 7, "A31667A8CEC1"), \
+			(12, "A31667A8CEC1"), \
+			(13, "A31667A8CEC1"), \
+			(14, "A31667A8CEC1"), \
+			(15, "A31667A8CEC1"), \
+		]
 
 		super().__init__(chip=chip, name=name)
 
@@ -509,7 +520,7 @@ class  MFC_FM11RF08_RARE(MFC_FM11RF08):
 #============================================================================== ========================================
 class  MFC_FM11RF08S(MFClassic):
 	def  __init__ (self,  name="Data",  chip="FM11RF08S"):
-		self.bdKey = ["A396EFA4E24F"]  # Backdoor Key
+		self.bdKey = [(4, "A396EFA4E24F")]  # Backdoor Key
 
 		super().__init__(name=name, chip=chip)
 
@@ -544,7 +555,7 @@ class  MFC_FM11RF08S(MFClassic):
 #============================================================================== ========================================
 class  MFC_FM11RF32N_20(MFClassic):
 	def  __init__ (self,  name="Data",  chip="FM11RF32N/20"):
-		self.bdKey = ["518b3354E760"]  # Backdoor Key
+		self.bdKey = [(4, "518b3354E760")]  # Backdoor Key
 
 		super().__init__(chip=chip, name=name)
 
@@ -569,7 +580,7 @@ class  MFC_FM11RF32N_20(MFClassic):
 #============================================================================== ========================================
 class  MFC_FM11RF32N_18(MFClassic):
 	def  __init__ (self,  name="Data",  chip="FM11RF32N/18"):
-		self.bdKey = ["518b3354E760"]  # Backdoor Key
+		self.bdKey = [(4, "518b3354E760")]  # Backdoor Key
 
 		super().__init__(chip=chip, name=name)
 
@@ -595,7 +606,17 @@ class  MFC_FM11RF32N_18(MFClassic):
 #============================================================================== ========================================
 class  MFC_FM1208_10(MFClassic):
 	def  __init__ (self,  name="Data",  chip="FM1208-10"):
-		self.bdKey = ["A31667A8CEC1"]  # Backdoor Key
+		# Backdoor Key(s)
+		self.bdKey = [ \
+			( 4, "A31667A8CEC1"), \
+			( 5, "A31667A8CEC1"), \
+			( 6, "A31667A8CEC1"), \
+			( 7, "A31667A8CEC1"), \
+			(12, "A31667A8CEC1"), \
+			(13, "A31667A8CEC1"), \
+			(14, "A31667A8CEC1"), \
+			(15, "A31667A8CEC1"), \
+		]
 
 		super().__init__(chip=chip, name=name)
 
@@ -621,7 +642,7 @@ class  MFC_FM1208_10(MFClassic):
 #============================================================================== ========================================
 class  MFC_MF1ICS5004(MFClassic):
 	def  __init__ (self,  name="Data",  chip="MF1ICS5004"):
-		self.bdKey = ["A31667A8CEC1"]  # Backdoor Key
+		self.bdKey = [(4, "A31667A8CEC1")]  # Backdoor Key
 
 		super().__init__(chip=chip, name=name)
 
@@ -1121,7 +1142,10 @@ log = Log()
 #   poke(5, "1122")      "1122"
 #   poke(7, [65,66,67])  "[65,66,67]"
 #
+from functools import reduce
+
 def  valxToList (valX):
+	print(type(valX))
 	#! should I be using `isinstance(x, thing)` ?
 	if type(valX) == str:
 		lstB = valX.replace(" ", "")
@@ -1135,11 +1159,12 @@ def  valxToList (valX):
 		txt = f"{valX:#X}".replace("X","x")
 
 	elif type(valX) == list:
+		print("lkjlkjlklkjlkjl")
 		lstB = valX
 		txt = f"{valX}"
 
 	else:
-		return None
+		return (None, "")
 
 	return (lstB, txt)
 
@@ -1230,9 +1255,9 @@ def  mfcIdentify ():
 	for mfc in MFC_ALL:
 		cls = mfc()
 		nm = cls.__class__.__name__
-		log.say(f"{nm} ", end='')
+		log.say(f"{nm} ", end='', prompt='')
 		if hasattr(cls, 'match'):
-			log.say(f"match ", end='')
+			log.say(f"match ", end='', prompt='')
 			if cls.match(blk0):
 				log.say(f" ( ok )")
 				match.append((nm, mfc))
@@ -1244,7 +1269,7 @@ def  mfcIdentify ():
 	return match
 
 #+============================================================================= ========================================
-def  getBackdoorKey (quiet=False):
+def  tryBackdoorKeys (quiet=False):
 	if quiet is True:  qlog = log.pause()
 
 	klist = []
@@ -1252,27 +1277,39 @@ def  getBackdoorKey (quiet=False):
 		cls = mfc()
 #		nm = cls.__class__.__name__
 		if hasattr(cls, 'bdKey'):
+			# exclude duplicates
 			klist.extend([k for k in cls.bdKey if k not in klist])
+
+	# sort by keyhole
+	# pragmatically, this will makes things more efficient
+	klist = sorted(klist, key=lambda x: x[0])
+
 	log.say(f"Trying known backdoor keys: {klist}")
 
+	# at this point in history, we can do this:
 	bdKey = ""
 	blk0  = Block()
 
-	for k in klist:
-		if blk0.rdbl(hole=Keyhole.BACKDOOR, key=k, end='') is True:
+	if blk0.rdbl() is False:
+		log.say("Card not detected")
+		return None
+
+	for h,k in klist:
+		if blk0.rdbl(hole=h, key=k, end='') is True:
 			s = color('ok', fg='green')
 			log.say(f"    ( {s} )", prompt='')
 			bdKey = k
+			bdHole = h
 			break
 		s = color('fail', fg='yellow')
 		log.say(f"    ( {s} )", prompt='')
 
 	if bdKey == "":
-		log.say("\n Unknown key, or card not detected.", prompt="[" + color("!", fg="red") + "]")
+		log.say("\n No known backdoor key.", prompt="[" + color("!", fg="red") + "]")
 		return None
 
 	if quiet is True:  log.resume(qlog)
-	return bdKey
+	return bdKey, bdHole
 
 #++============================================================================ ========================================
 def  main ():
@@ -1280,14 +1317,22 @@ def  main ():
 #		return
 #	args  = parseCli()
 
+
+#	for i in range (15):
+#		print(format(i>>4, "04b") + "'" + format(i&15, "04b")+ "  ", end='')
+#		pRes, pCap = pm3Call(f"hf mf rdbl --blk 0 --key A31667A8CEC1 -c {i}", end='')
+#		print("  **********" if pRes==0 else "  --")
+#	sys.exit(0)
+
+
 	#-----------------------------------------------------
 	# logfile not started - this will get buffered
 	log.say("Welome")
 
 	#-----------------------------------------------------
 	# run the (known) backdoor key check
-	bdKey = getBackdoorKey()
-	log.say(f"Found backdoor key: {bdKey}")
+	bdKey, bdHole = tryBackdoorKeys()
+	log.say(f"Found backdoor key: {bdHole}/{bdKey}")
 
 	#-----------------------------------------------------
 	# load a one-off block
@@ -1302,32 +1347,64 @@ def  main ():
 		#log.say(blk0.to_json())
 
 	#-----------------------------------------------------
+	# use getPref() to retrive the dump path from the PM3
+	dpath = getPref(Pref.DumpPath) + os.path.sep
+
+	#-----------------------------------------------------
+	# We do not know what type of card we have yet
+	# so we will assume a 4-byte [N]UID
+	uid     = blk0.hexC[:8]
+	logfile = log.start(f"{dpath}hf-mf-{uid}-log.txt")
+	log.say("\nLog file: " + color(f"{logfile}", fg="yellow"))
+
+	#-----------------------------------------------------
 	# Check UID
-	mfc = MFClassic()
-	uid = blk0.hexB[0:4]
-	bcc = blk0.hexB[4]
+	# If we want to use the built-in Card processing,
+	# we can't do it on a block that doesn't belong to a Card
+	#
+	# So let's try again:...
+	#   Load Block #0 ...but this time, in to a virtual Card
+	#
+	# Each Card type/chip  knows things about the way data is
+	#   stored on that card. So we need to pick a Card.
+	# Each specific card knows if it has a {4, 7, 10} byte UID
+	# So we cannot auto-extract the UID without having picked a card type
+	# If in doubt, we can use the base class - which, as it stands,
+	#   assumes a (common) 4-byte [N]UID
+	mfc = MFClassic(name="sandpit")  # start with a blank Card
+	mfc.addSec(1, 1)                 # add 1 Sector, containing 1 Block (Block #0)
+	mfc.blk[0].rdbl(0)               # reload block 0, this time in to our virtual card
+	uid, bcc = mfc.uid()             # now we can start using Card processing features
 
-	ok, chk = mfc.uidIsValid(uid,bcc)
+	# Yes, it would probably, on this occasion, been easier to do this
+	# But I wanted an excuse to show how it is done "properly"
+#	uid = blk0.hexB[0:4]
+#	bcc = blk0.hexB[4]
+
 	log.say(f"UID check #1 : [{uid}/{bcc}] : ", end='')
-	if ok is True:
-		log.say("Pass")
-	else:
-		if chk < 0:
-			log.say("Error")
-		else:
-			log.say(f"Fail, should be {chk}")
-
-	bcc += 1  #cause error
-
 	ok, chk = mfc.uidIsValid(uid,bcc)
-	log.say(f"UID check #2 : [{uid}/{bcc}] : ", end='')
 	if ok is True:
 		log.say("Pass")
 	else:
 		if chk < 0:
-			log.say("Error")
+			log.say("Bad UID")
 		else:
 			log.say(f"Fail, should be {chk}")
+
+	#-----------------------------------------------------
+	bcc += 1  # force mismatch
+
+	log.say(f"UID check #2 : [{uid}/{bcc}] : ", end='')
+	ok, chk = mfc.uidIsValid(uid,bcc)
+	if ok is True:
+		log.say("Pass")
+	else:
+		if chk < 0:
+			log.say("Bad UID")
+		else:
+			log.say(f"Fail, should be {chk}")
+
+	sys.exit()
 
 	#-----------------------------------------------------
 	# Idenitfy the card from the manufacturing data
@@ -1347,15 +1424,6 @@ def  main ():
 		sys.exit(9)
 
 #	dump(myCard)
-
-	#-----------------------------------------------------
-	# use getPref() to retrive the dump path from the PM3
-	dpath = getPref(Pref.DumpPath) + os.path.sep
-
-	#-----------------------------------------------------
-	uid     = blk0.hexC[:8]
-	logfile = log.start(f"{dpath}hf-mf-{uid}-log.txt")
-	log.say("\nLog file: " + color(f"{logfile}", fg="yellow"))
 
 	#-----------------------------------------------------
 	log.pause()
@@ -1383,7 +1451,7 @@ def  main ():
 	card = MFC_DEMO("myCard")
 	card.blk[2].poke(0, 0xff)
 	card.sec[1].blk[0].poke(1, 0xee)
-	dumpCard(card)
+#	dumpCard(card)
 
 	dump(blk0)
 
