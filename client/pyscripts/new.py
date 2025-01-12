@@ -119,7 +119,7 @@ class  MFClassic:
 
 	#%+======================================================================== get14a
 	def  get14a (self):
-		self.atqa, self.sak, self.prng = mfxGet14a()
+		self.atqa, self.sak, self.prng = mfcGet14a()
 
 	#%+======================================================================== notes
 	# Return the notes for the card
@@ -195,8 +195,8 @@ class  MFClassic:
 	#   you MUST override this function
 	#
 	def  sector (self,  n=0):
-		if 0 <= n < sCnt:  return self.sec[n]
-		else:              return None
+		if 0 <= n < self.sCnt:  return self.sec[n]
+		else:                   return None
 
 	#%+======================================================================== blkCnt
 	# Return the number of Block on the Card
@@ -371,10 +371,10 @@ class  MFClassic:
 	#   BCC is byte  {4}     ... returned as an int
 	#
 	# This default Method retrieves a 4-byte NUID (+BCC)
-	# It MAY be overridden (eg. for 7 or 10 byte UIDs)  #! I don't know how
+	# It MAY be overridden (eg. for 7 or 10 byte UIDs)  #! I have no data from which to work :/
 	#
 	def  uid (self):
-		return (self.blk[0].hexP[0*3:(3+1)*3],  self.blk[0].hexB[4])
+		return (self.blk[0].hexP[0*3:((3+1)*3)-1],  self.blk[0].hexB[4])
 
 	#%+======================================================================== uidIsValid
 	# Check if the supplied UID matches the supplied BCC
@@ -397,8 +397,6 @@ class  MFClassic:
 	# ...I know of NO use case for this functionality
 	#
 	def  uidIsValid (self, uid, bcc=-1):
-		print(uid)
-		print(bcc)
 		b, txt = valxToList(uid)
 		if b is None:  return (False, -1)        # uid is not a uid
 
@@ -412,8 +410,14 @@ class  MFClassic:
 
 		chk = reduce(lambda x, y: x ^ y, b)      # perform XOR checksum
 
-		if chk == bcc:  return (False, chk)
-		else:           return (True, chk)
+		if chk == bcc:  return (True,  chk)
+		else:           return (False, chk)
+
+	#%+======================================================================== show
+	def  show (self, hdr=False, ascii=True, sep="_"):
+		for s in self.sec:
+			s.show(hdr, ascii, sep)
+			hdr = False
 
 #%%============================================================================ ========================================
 # DEMO - Quite simple a programming and test example                             MFClassic( MFC_DEMO )
@@ -439,7 +443,7 @@ class  MFC_DEMO(MFClassic):
 	#
 	# Return: True/False
 	#
-#	def  match (self,  blk0):
+#	def  match (self,  sak, blk0):
 # This is actually (by means of an example) the FM11RF08S signture
 #		if (blk0.hexB[15] == 0x90) and (blk0.hexB[8] in [0x01, 0x03, 0x04]):
 #			return True
@@ -513,8 +517,15 @@ class  MFC_FM11RF08(MFClassic):
 	#%+======================================================================== match
 	# Signature match
 	#
-	def  match (self,  blk0):
-		if (blk0.hexB[15] == 0x1D) and (blk0.hexB[8] in [0x01, 0x02, 0x03]):
+	def  match (self,  sak, blk0):
+		lstB, txt = valxToList(sak)
+		if len(lstB) != 1:  return False
+		sak = lstB[0]
+
+		if  sak == 0x08 \
+		and (blk0.hexB[5:(7+1)] == [0x08, 0x04, 0x00]) \
+		and (blk0.hexB[15]      == 0x1D) \
+		and (blk0.hexB[8]       in [0x01, 0x02, 0x03]) :
 			return True
 		return False
 
@@ -537,8 +548,14 @@ class  MFC_FM11RF08_RARE(MFC_FM11RF08):
 	#%+======================================================================== match
 	# Signature matching algorithm
 	#
-	def  match (self,  blk0):
-		if (blk0.hexB[15] == 0x1D) and (blk0.hexB[8] in [0x01, 0x02, 0x03]):
+	def  match (self,  sak, blk0):
+		lstB, txt = valxToList(sak)
+		if len(lstB) != 1:  return False
+		sak = lstB[0]
+
+		if  sak == 0x08 \
+		and (blk0.hexB[5:(7+1)] == [0x08, 0x04, 0x00]) \
+		and (blk0.hexB[15]      in [0x91, 0x98]) :
 			return True
 		return False
 
@@ -554,8 +571,15 @@ class  MFC_FM11RF08S(MFClassic):
 	#%+======================================================================== match
 	# Signature matching algorithm
 	#
-	def  match (self,  blk0):
-		if (blk0.hexB[15] == 0x90) and (blk0.hexB[8] in [0x01, 0x03, 0x04]):
+	def  match (self,  sak, blk0):
+		lstB, txt = valxToList(sak)
+		if len(lstB) != 1:  return False
+		sak = lstB[0]
+
+		if  sak == 0x08 \
+		and (blk0.hexB[5:(7+1)] == [0x08, 0x04, 0x00]) \
+		and (blk0.hexB[8]       in [0x01, 0x03, 0x04]) \
+		and (blk0.hexB[15]      == 0x90) :
 			return True
 
 	#%+======================================================================== setup
@@ -594,10 +618,13 @@ class  MFC_FM11RF32N_20(MFClassic):
 	#%+======================================================================== match
 	# Signature matching algorithm
 	#
-	def  match (self,  blk0):
-		sak = blk0.hexB[5]  #!
-		if (sak == 0x20) and \
-		   (blk0.hexB[8:(15+1)] == [0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69]):
+	def  match (self,  sak, blk0):
+		lstB, txt = valxToList(sak)
+		if len(lstB) != 1:  return False
+		sak = lstB[0]
+
+		if  (sak == 0x20) \
+		and (blk0.hexB[8:(15+1)] == [0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69]) :
 			return True
 
 	#%+======================================================================== setup
@@ -624,12 +651,17 @@ class  MFC_FM11RF32N_18(MFClassic):
 	#%+======================================================================== match
 	# Signature matching algorithm
 	#
-	def  match (self,  blk0):
-		sak = blk0.hexB[5]  #!
-		if (sak == 0x18) and \
-		   (blk0.hexB[5:(15+1)] == [0x18, 0x02, 0x00, 0x46, 0x44, 0x53, 0x37, 0x30, 0x56, 0x30, 0x31]):
+	def  match (self,  sak, blk0):
+		lstB, txt = valxToList(sak)
+		if len(lstB) != 1:  return False
+		sak = lstB[0]
+
+		if  (sak == 0x18) \
+		and (blk0.hexB[5:(7+1)] == [0x18, 0x02, 0x00]) \
+		and (blk0.text[8:]      == "FDS70V01") :
 			return True
 
+#		and (blk0.hexB[5:(15+1)] == [0x18, 0x02, 0x00, 0x46, 0x44, 0x53, 0x37, 0x30, 0x56, 0x30, 0x31]) :
 	#%+======================================================================== setup
 	# This Card has: 32 Sectors, each of  4 Blocks, each of 16 Bytes
 	#   followed by:  8 Sectors, each of 16 Blocks, each of 16 Bytes
@@ -661,12 +693,15 @@ class  MFC_FM1208_10(MFClassic):
 	#%+======================================================================== match
 	# Signature matching algorithm
 	#
-	def  match (self,  blk0):
-		sak = blk0.hexB[5]  #!
-		if (sak == 0x28) and \
-		   (blk0.hexB[ 5:( 8+1)] == [0x28, 0x04, 0x00, 0x90]) and \
-		   (blk0.hexB[9]         in [0x01, 0x03, 0x04]) and \
-		   (blk0.hexB[10:(15+1)] == [0x15, 0x01, 0x00, 0x00, 0x00, 0x00]):
+	def  match (self,  sak, blk0):
+		lstB, txt = valxToList(sak)
+		if len(lstB) != 1:  return False
+		sak = lstB[0]
+
+		if  (sak == 0x28) \
+		and (blk0.hexB[ 5:( 8+1)] == [0x28, 0x04, 0x00, 0x90]) \
+		and (blk0.hexB[9]         in [0x01, 0x03, 0x04]) \
+		and (blk0.hexB[10:(15+1)] == [0x15, 0x01, 0x00, 0x00, 0x00, 0x00]) :
 			return True
 
 	#%+======================================================================== setup
@@ -687,12 +722,15 @@ class  MFC_MF1ICS5004(MFClassic):
 	#%+======================================================================== match
 	# Signature matching algorithm
 	#
-	def  match (self,  blk0):
-		sak = blk0.hexB[5]  #!
-		if (sak == 0x28) and \
-		   (blk0.hexB[ 5:( 8+1)] == [0x28, 0x04, 0x00, 0x90]) and \
-		   (blk0.hexB[9]         in [0x01, 0x03, 0x04]) and \
-		   (blk0.hexB[10:(15+1)] == [0x15, 0x01, 0x00, 0x00, 0x00, 0x00]):
+	def  match (self,  sak, blk0):
+		lstB, txt = valxToList(sak)
+		if len(lstB) != 1:  return False
+		sak = lstB[0]
+
+		if  (sak == 0x28) \
+		and (blk0.hexB[ 5:( 8+1)] == [0x28, 0x04, 0x00, 0x90]) \
+		and (blk0.hexB[9]         in [0x01, 0x03, 0x04]) \
+		and (blk0.hexB[10:(15+1)] == [0x15, 0x01, 0x00, 0x00, 0x00, 0x00]):
 			return True
 
 	#%+======================================================================== setup
@@ -776,6 +814,12 @@ class Sector:
 	def  blkCnt (self):
 		return self.bCnt
 
+	#%+======================================================================== block
+	#
+	def  block (self):
+		if 0 <= n < self.bCnt:  return self.blk[n]
+		else:                   return None
+
 	#%+======================================================================== blocks
 	# Returns the Blocks in the Sector as a single contiguous list
 	# (Useful for serialisation)
@@ -845,6 +889,12 @@ class Sector:
 		if (self.parent != None) and hasattr(self.parent, 'secKeySet'):
 			return self.parent.secKeySet(self.secN, ab, key)
 		return None
+
+	#%+======================================================================== show
+	def  show (self, hdr=False, ascii=True, sep="_"):
+		for b in self.blk:
+			b.show(hdr, ascii, sep)
+			hdr = False
 
 #%============================================================================= ========================================
 # Keyhole names                                                                  Keyhole
@@ -1080,6 +1130,86 @@ class Block:
 		for i in range(offs, offs+cnt):
 			self.__poke(i, self.nulH)
 
+	#+========================================================================= show
+	# For now I am going to assume that every block is 16 bytes
+	# I have plenty of ideas if this turns out to be a bad assumption
+	#
+	# If the block is orphan, its Sector will be "  [  ]"
+	# Block #0 will be dumped as a manufacturing block
+	# The Separator may be changed, use "", " ", or None for spaces
+	# ASCII may be disabled: 'ascii=False' (keeps output to <80 chars)
+	#
+	# 0        1         2         3         4         5         6         7         8         9
+	# 123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+	# | Sector:Blk |ACL| Hex                                             | ASCII               |
+	# |------------+---+-------------------------------------------------+---------------------|
+	# |  1[ 0]:  1 | 7 | 00 11 22 33|44|55|66 77|88 99 00 11|12 13 14 15 | .... .... .... .... |
+	# |   [ 1]:  1 | 7 | 00 11 22 33|44 55 66 77|88 99 00 11|12 13 14 15 | .... .... .... .... |
+	# |   [ 2]:  1 | 7 | 00 11 22 33|44 55 66 77|88 99 00 11|12 13 14 15 | .... .... .... .... |
+	# | 40[15]:256 | 7 | 00 11 22 33 44 55|66 77 88|99|10 11 12 13 14 15 | .... .... .... .... |
+	# |   [  ]:256 | 7 | 00 11 22 33 44 55|66 77 88|99|10 11 12 13 14 15 | .... .... .... .... |
+	#
+	def  show (self, hdr=False, ascii=True, sep="."):
+		out = ""
+
+		if hdr is True:
+			if ascii is True:
+				out += "| Sector:Blk |ACL| Hex                                             | ASCII               |\n"
+				out += "|------------|---|-------------------------------------------------|-----.----.----.-----|\n"
+			else:
+				out += "| Sector:Blk |ACL| Hex                                             |\n"
+				out += "|------------|---|-------------------------------------------------|\n"
+
+		# sector
+		trl = False
+		if self.__parent is not None:
+			sec = self.__parent.secN
+			idx = self.blkN - self.__parent.blk[0].blkN
+			if idx == self.__parent.bCnt -1:
+				trl = True
+			tmp = f"{sec:#2d}[{idx:#2d}]"
+		else:
+			tmp = "  [  ]"
+		# +block
+		out += "| " + tmp + f":{self.blkN:#3d} |"
+
+		# acl
+		out += " ? | "
+
+		# hex
+		tmp = self.hexP
+		if sep == None:  sep = " "
+		sep = sep + "|"
+		sep = sep[:1]
+		# block 0
+		if self.blkN == 0:
+			tmp = tmp[:( 3+1)*3-1] + sep + tmp[( 3+1)*3:]  # uid|
+			tmp = tmp[:( 4+1)*3-1] + sep + tmp[( 4+1)*3:]  # bcc|
+			tmp = tmp[:( 5+1)*3-1] + sep + tmp[( 5+1)*3:]  # sak|
+			tmp = tmp[:( 7+1)*3-1] + sep + tmp[( 7+1)*3:]  # atqa|
+			tmp = tmp[:(11+1)*3-1] + sep + tmp[(11+1)*3:]  # ....|....
+		# trailer
+		elif trl == True:
+			tmp = tmp[:( 5+1)*3-1] + sep + tmp[( 5+1)*3:]  # keya|
+			tmp = tmp[:( 8+1)*3-1] + sep + tmp[( 8+1)*3:]  # acl|
+			tmp = tmp[:( 9+1)*3-1] + sep + tmp[( 9+1)*3:]  # user|keyb
+		# data
+		else:
+			tmp = tmp[:( 3+1)*3-1] + sep + tmp[( 3+1)*3:]  # ....|....|....|....
+			tmp = tmp[:( 7+1)*3-1] + sep + tmp[( 7+1)*3:]
+			tmp = tmp[:(11+1)*3-1] + sep + tmp[(11+1)*3:]
+		out += tmp + " |"
+
+		#ascii
+		if ascii is True:
+			tmp = self.text
+			tmp = tmp[: 4] + " " + tmp[ 4:]
+			tmp = tmp[: 9] + " " + tmp[ 9:]
+			tmp = tmp[:14] + " " + tmp[14:]
+			out += " " + tmp + " |"
+
+		return out
+
 #%============================================================================= ========================================
 class Log:
 	def  __init__ (self):
@@ -1183,7 +1313,6 @@ log = Log()
 from functools import reduce
 
 def  valxToList (valX):
-	print(type(valX))
 	#! should I be using `isinstance(x, thing)` ?
 	if type(valX) == str:
 		lstB = valX.replace(" ", "")
@@ -1288,7 +1417,7 @@ def  mfcGet14a ():
 	sak  = None
 	prng = None
 
-	pRes, pCap = pm3Call("hf 14a info")
+	pRes, pCap = pm3Call("hf 14a info", quiet=True)
 	if pRes != 0:
 		log.say("Read fail")
 	else:
@@ -1299,7 +1428,8 @@ def  mfcGet14a ():
 				if m:  atqa = m.group(1)
 
 			if sak == None:
-				r = r"SAK: (.. \[.\])"
+#				r = r"SAK: (.. \[.\])"
+				r = r"SAK: (..)"
 				m = re.search(r, lin)
 				if m:  sak = m.group(1)
 
@@ -1311,7 +1441,7 @@ def  mfcGet14a ():
 	return (atqa, sak, prng)
 
 #+============================================================================= ========================================
-def  mfcIdentify ():
+def  mfcIdentify (full=False):
 	# load a one-off/stand-alone block
 	blk0 = Block()
 	blk0.rdbl(0, quiet=True)
@@ -1320,27 +1450,29 @@ def  mfcIdentify ():
 		return False
 
 	atqa, sak, prng = mfcGet14a();
-	print(f"{atqa}/{sak}/{prng}")
+	vsak = blk0.hexC[5*2:(5+1)*2]
+	log.say (f"ATQA={atqa} ; SAK={sak} ({vsak}) ; PRNG={prng}")
 
 	match = []
 	for mfc in MFC_ALL:
 		cls = mfc()
 		nm = cls.__class__.__name__
-		log.say(f"{nm} ", end='', prompt='')
+		log.say(f"{nm} ", end='')
 		if hasattr(cls, 'match'):
 			log.say(f"match ", end='', prompt='')
-			if cls.match(blk0):
-				log.say(f" ( ok )")
+			if cls.match(sak, blk0):
+				log.say(f" \t( ok )", prompt='')
 				match.append((nm, mfc))
+				if not full:  break
 			else:
-				log.say(f" ( fail )")
+				log.say(f" \t( fail )", prompt='')
 		else:
-			log.say(f" nomatch")
+			log.say(f" nomatch", prompt='')
 
 	return match
 
 #+============================================================================= ========================================
-def  tryBackdoorKeys (quiet=False):
+def  mfcBackdoorKeys (quiet=False):
 	if quiet is True:  qlog = log.pause()
 
 	klist = []
@@ -1361,7 +1493,7 @@ def  tryBackdoorKeys (quiet=False):
 	bdKey = ""
 	blk0  = Block()
 
-	if blk0.rdbl() is False:
+	if blk0.rdbl(quiet=quiet) is False: 
 		log.say("Card not detected")
 		return None
 
@@ -1377,7 +1509,7 @@ def  tryBackdoorKeys (quiet=False):
 
 	if bdKey == "":
 		log.say("\n No known backdoor key.", prompt="[" + color("!", fg="red") + "]")
-		return None
+		return None, None
 
 	if quiet is True:  log.resume(qlog)
 	return bdKey, bdHole
@@ -1406,24 +1538,25 @@ def  main ():
 
 	#-----------------------------------------------------
 	# logfile not started - this will get buffered
-	log.say("Welome")
+	log.say("Welcome to the start of the demo...")
 
 	#-----------------------------------------------------
 	# run the (known) backdoor key check
-	bdKey, bdHole = tryBackdoorKeys()
+	log.say(f"\nLet's see if we can jemmy this with a backdoor key...")
+
+	bdKey, bdHole = mfcBackdoorKeys()
 	log.say(f"Found backdoor key: {bdHole}/{bdKey}")
 
 	#-----------------------------------------------------
-	# load a one-off block
+	# Grab the first 4 bytes of block 0 for the logfile name
+	log.say(f"\nGenerate the logfile name...")
+
 	blk0 = Block()
 	blk0.rdbl(0, quiet=True)
 
 	if blk0.rdOK is False:
-		log.say("Failed to read Block #0", prompt="[!] ")
+		log.say("Failed to read Block #0 - bailing", prompt="[!] ")
 		sys.exit(9)
-	else:
-		dump(blk0)
-		#log.say(blk0.to_json())
 
 	#-----------------------------------------------------
 	# use getPref() to retrive the dump path from the PM3
@@ -1434,7 +1567,7 @@ def  main ():
 	# so we will assume a 4-byte [N]UID
 	uid     = blk0.hexC[:8]
 	logfile = log.start(f"{dpath}hf-mf-{uid}-log.txt")
-	log.say("\nLog file: " + color(f"{logfile}", fg="yellow"))
+	log.say("Log file: " + color(f"{logfile}", fg="yellow"))
 
 	#-----------------------------------------------------
 	# Check UID
@@ -1450,6 +1583,8 @@ def  main ():
 	# So we cannot auto-extract the UID without having picked a card type
 	# If in doubt, we can use the base class - which, as it stands,
 	#   assumes a (common) 4-byte [N]UID
+	log.say("\nUID Check {pass, fail}...")
+
 	mfc = MFClassic(name="sandpit")  # start with a blank Card
 	mfc.addSec(1, 1)                 # add 1 Sector, containing 1 Block (Block #0)
 	mfc.blk[0].rdbl(0)               # reload block 0, this time in to our virtual card
@@ -1460,34 +1595,25 @@ def  main ():
 #	uid = blk0.hexB[0:4]
 #	bcc = blk0.hexB[4]
 
-	log.say(f"UID check #1 : [{uid}/{bcc}] : ", end='')
-	ok, chk = mfc.uidIsValid(uid,bcc)
-	if ok is True:
-		log.say("Pass")
-	else:
-		if chk < 0:
-			log.say("Bad UID")
-		else:
-			log.say(f"Fail, should be {chk}")
-
 	#-----------------------------------------------------
-	bcc += 1  # force mismatch
-
-	log.say(f"UID check #2 : [{uid}/{bcc}] : ", end='')
-	ok, chk = mfc.uidIsValid(uid,bcc)
-	if ok is True:
-		log.say("Pass")
-	else:
-		if chk < 0:
-			log.say("Bad UID")
+	# first one should PASS, second should FAIL
+	for i in range(0, 1+1):
+		log.say(f"  #{i+1} : [{uid} / " + f"{bcc+i:#2X}]"[2:] + ": ", end='')
+		ok, chk = mfc.uidIsValid(uid, bcc+i)
+		if ok is True:
+			log.say("Pass", prompt='')
 		else:
-			log.say(f"Fail, should be {chk}")
-
-#	sys.exit()
+			if chk < 0:
+				log.say("Bad UID", prompt='')
+			else:
+				log.say(f"Fail (should be " + f"{chk:#2X})"[2:], prompt='')
 
 	#-----------------------------------------------------
 	# Idenitfy the card from the manufacturing data
-	match = mfcIdentify()
+	# we will ask for the FULL list of all matches (not just the first match)
+	log.say("\nTry to identify the card...")
+
+	match = mfcIdentify(full=True)
 	if   len(match) == 0:
 		log.say("No Chip Signature matches found")
 		myCard = MFC_FM11RF08()
@@ -1502,6 +1628,39 @@ def  main ():
 		log.say(f"Problem: Multiple Chip Signatures match: {names}")
 		sys.exit(9)
 
+	#-----------------------------------------------------
+	# show off the two dump functions
+	#   1. developers heirarchical data dump
+	#   2. user dnump
+
+	# let's pad the sector to 4 blocks first
+#mfc.sector(0).addBlk(3)
+
+	# and load the control info
+	mfc.get14a()
+
+	log.say("\nDevelopers dump (of card)...")
+	dump(mfc)
+
+	log.say("\nUser dump (of card)...")
+	log.say(mfc.show(hdr=True))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	sys.exit()
 #	dump(myCard)
 
 	#-----------------------------------------------------
