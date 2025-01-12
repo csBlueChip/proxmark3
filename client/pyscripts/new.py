@@ -52,6 +52,152 @@ except ModuleNotFoundError:
         _ = fg
         return str(s)
 
+#+============================================================================= ========================================
+# I'm not screwing around with virtual python environments just to get ANSI colours working!
+#
+
+cBLK  = ""     # in order of perceived brightness (for colour blind consideration)
+cBLU  = ""
+cRED  = ""
+cMAG  = ""
+cGRN  = ""
+cCYN  = ""
+cYEL  = ""
+cWHT  = ""
+
+cBBLK = ""     # bright/bold/intense colours
+cBBLU = ""
+cBRED = ""
+cBMAG = ""
+cBGRN = ""
+cBCYN = ""
+cBYEL = ""
+cBWHT = ""
+
+cDBLK = ""     # dark black == black
+cDBLU = ""
+cDRED = ""
+cDMAG = ""
+cDGRN = ""
+cDCYN = ""
+cDYEL = ""
+cDWHT = ""
+
+cDGRY = cBBLK  # synonyms
+cLGRY = cDWHT
+cBRN  = cDYEL
+
+onBLK = ""     # paper colour
+onBLU = ""
+onRED = ""
+onMAG = ""
+onGRN = ""
+onCYN = ""
+onYEL = ""
+onWHT = ""
+
+cEOL  = ""     # paint to end of line
+
+cNORM = ""     # system default colours
+
+def  myAnsi (enable=True):
+	global cBLK,  cBLU,  cRED,  cMAG,  cGRN,  cCYN,  cYEL,  cWHT
+	global cBBLK, cBBLU, cBRED, cBMAG, cBGRN, cBCYN, cBYEL, cBWHT
+	global cDBLK, cDBLU, cDRED, cDMAG, cDGRN, cDCYN, cDYEL, cDWHT
+	global cDGRY, cLGRY, cBRN
+	global onBLK, onBLU, onRED, onMAG, onGRN, onCYN, onYEL, onWHT
+	global cEOL
+	global cNORM
+
+	if enable is True:
+		cBLK  = "\033[0;30m"  # in order of perceived brightness (for colour blind consideration)
+		cBLU  = "\033[0;34m"
+		cRED  = "\033[0;31m"
+		cMAG  = "\033[0;35m"
+		cGRN  = "\033[0;32m"
+		cCYN  = "\033[0;36m"
+		cYEL  = "\033[0;33m"
+		cWHT  = "\033[0;37m"
+
+		cBBLK = "\033[1;30m"  # bright/bold/intense colours
+		cBBLU = "\033[1;34m"
+		cBRED = "\033[1;31m"
+		cBMAG = "\033[1;35m"
+		cBGRN = "\033[1;32m"
+		cBCYN = "\033[1;36m"
+		cBYEL = "\033[1;33m"
+		cBWHT = "\033[1;37m"
+
+		cDBLK = "\033[2;30m"  # dark black == black
+		cDBLU = "\033[2;34m"
+		cDRED = "\033[2;31m"
+		cDMAG = "\033[2;35m"
+		cDGRN = "\033[2;32m"
+		cDCYN = "\033[2;36m"
+		cDYEL = "\033[2;33m"
+		cDWHT = "\033[2;37m"
+
+		cDGRY = cBBLK         # synonyms
+		cLGRY = cDWHT
+		cBRN  = cDYEL
+
+		onBLK = "\033[40m"    # paper colour
+		onBLU = "\033[44m"
+		onRED = "\033[41m"
+		onMAG = "\033[45m"
+		onGRN = "\033[42m"
+		onCYN = "\033[46m"
+		onYEL = "\033[43m"
+		onWHT = "\033[47m"
+
+		cEOL  = "\033[K"      # paint to end of line
+
+		cNORM = "\033[0m"     # system default colours
+	else:
+		cBLK  = ""
+		cBLU  = ""
+		cRED  = ""
+		cMAG  = ""
+		cGRN  = ""
+		cCYN  = ""
+		cYEL  = ""
+		cWHT  = ""
+
+		cBBLK = ""
+		cBBLU = ""
+		cBRED = ""
+		cBMAG = ""
+		cBGRN = ""
+		cBCYN = ""
+		cBYEL = ""
+		cBWHT = ""
+
+		cDBLK = ""
+		cDBLU = ""
+		cDRED = ""
+		cDMAG = ""
+		cDGRN = ""
+		cDCYN = ""
+		cDYEL = ""
+		cDWHT = ""
+
+		cDGRY = ""
+		cLGRY = ""
+		cBRN  = ""
+
+		onBLK = ""
+		onBLU = ""
+		onRED = ""
+		onMAG = ""
+		onGRN = ""
+		onCYN = ""
+		onYEL = ""
+		onWHT = ""
+
+		cEOL  = ""
+
+		cNORM = ""
+
 #============================================================================== ========================================
 #                                                                                PM3 Preferences
 #============================================================================== ========================================
@@ -73,7 +219,7 @@ def  getPref (pref):
 def  pm3Call (cmd,  end='\n',  quiet=False):
 	p = pm3.pm3()
 	if quiet is not True:
-		log.say(f"`{cmd}`", end=end)
+		log.say(f"{cBMAG}`{cmd}`{cNORM}", end=end)
 	pRes = p.console(cmd)
 	pCap = p.grabbed_output
 	return pRes, pCap
@@ -118,8 +264,8 @@ class  MFClassic:
 		self.hist = ""  # command history
 
 	#%+======================================================================== get14a
-	def  get14a (self):
-		self.atqa, self.sak, self.prng = mfcGet14a()
+	def  get14a (self, quiet=False):
+		self.atqa, self.sak, self.prng = mfcGet14a(quiet)
 
 	#%+======================================================================== notes
 	# Return the notes for the card
@@ -152,7 +298,7 @@ class  MFClassic:
 	# Returns the FULL Card history log
 	#
 	def  addHist (self, cmd):
-		self.hist += "; " + cmd
+		self.hist += ("; " if len(self.hist) else "") + cmd
 		return self.history()
 
 	#%+======================================================================== addSec
@@ -209,7 +355,7 @@ class  MFClassic:
 	# (Useful for serialisation)
 	#
 	def  blocks (self):
-		return self.sblk
+		return self.blk
 
 	#%+======================================================================== block
 	# Return Block number 'n'
@@ -219,8 +365,8 @@ class  MFClassic:
 	# Blocks may not be contiguous (eg. RF08S)
 	#
 	def  block (self,  n=0):
-		if 0 <= n < bCnt:  return self.blk[n]
-		else:              return None
+		if 0 <= n < self.bCnt:  return self.blk[n]
+		else:                   return None
 
 	#%+======================================================================== secAcl
 	# Return the ACL bits for the specified Sector - as an unpadded Hex String
@@ -414,10 +560,15 @@ class  MFClassic:
 		else:           return (False, chk)
 
 	#%+======================================================================== show
-	def  show (self, hdr=False, ascii=True, sep="_"):
+	def  show (self, hdr=False, ascii=True, sep=":"):
+		out = ""
 		for s in self.sec:
-			s.show(hdr, ascii, sep)
+			out += s.show(hdr, ascii, sep) + "\n"
 			hdr = False
+			if ascii is True:
+				out += "|------------|---|------------.-----'-----.--'--'-----.------------|-----.----.----.-----|\n"
+
+		return out[:-1]
 
 #%%============================================================================ ========================================
 # DEMO - Quite simple a programming and test example                             MFClassic( MFC_DEMO )
@@ -815,8 +966,8 @@ class Sector:
 		return self.bCnt
 
 	#%+======================================================================== block
-	#
-	def  block (self):
+	# return the Nth Block from the Sector
+	def  block (self, n):
 		if 0 <= n < self.bCnt:  return self.blk[n]
 		else:                   return None
 
@@ -891,10 +1042,13 @@ class Sector:
 		return None
 
 	#%+======================================================================== show
-	def  show (self, hdr=False, ascii=True, sep="_"):
+	def  show (self, hdr=False, ascii=True, sep="."):
+		out = ""
 		for b in self.blk:
-			b.show(hdr, ascii, sep)
+			out += b.show(hdr, ascii, sep) + "\n"
 			hdr = False
+
+		return out[:-1]
 
 #%============================================================================= ========================================
 # Keyhole names                                                                  Keyhole
@@ -1107,7 +1261,7 @@ class Block:
 	#   pokeT(10, datetime.date.today().strftime("%Y-%m-%d"))
 	#
 	def  pokeT (self,  offs=0,  s=""):
-		self.addHist(f"pokeT({offs},{s})")
+		self.addHist(f"pokeT({offs},\"{s}\")")
 
 		if type(s) != str:  return False
 
@@ -1154,11 +1308,13 @@ class Block:
 
 		if hdr is True:
 			if ascii is True:
-				out += "| Sector:Blk |ACL| Hex                                             | ASCII               |\n"
-				out += "|------------|---|-------------------------------------------------|-----.----.----.-----|\n"
+#				out += f"| Sector:Blk |ACL| 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 | ASCII               |\n"
+				out += f"| {cBBLU}Sector{cNORM}:{cBGRN}Blk{cNORM} |{cMAG}ACL{cNORM}| {cWHT}00 01 02 03 {cBWHT}04 05 06 07 {cWHT}08 09 10 11 {cBWHT}12 13 14 15{cNORM} | ASCII               |\n"
+				out += f"|------------|---|-------------------------------------------------|-----.----.----.-----|\n"
 			else:
-				out += "| Sector:Blk |ACL| Hex                                             |\n"
-				out += "|------------|---|-------------------------------------------------|\n"
+#				out += f"| Sector:Blk |ACL| Hex                                             |\n"
+				out += f"| {cBBLU}Sector{cNORM}:{cBGRN}Blk{cNORM} |{cMAG}ACL{cNORM}| {cWHT}00 01 02 03 {cBWHT}04 05 06 07 {cWHT}08 09 10 11 {cBWHT}12 13 14 15{cNORM} |"
+				out += f"|------------|---|-------------------------------------------------|\n"
 
 		# sector
 		trl = False
@@ -1167,46 +1323,59 @@ class Block:
 			idx = self.blkN - self.__parent.blk[0].blkN
 			if idx == self.__parent.bCnt -1:
 				trl = True
-			tmp = f"{sec:#2d}[{idx:#2d}]"
+			tmp = f"{cBBLU}{sec:#2d}[{idx:#2d}]"
 		else:
-			tmp = "  [  ]"
+			tmp = "{cBBLU}  [  ]"
 		# +block
-		out += "| " + tmp + f":{self.blkN:#3d} |"
+		out += "| " + tmp + f"{cNORM}:{cBGRN}{self.blkN:#3d}{cNORM} |"
 
 		# acl
-		out += " ? | "
+		out += f"{cMAG} ? {cNORM}| "
 
 		# hex
 		tmp = self.hexP
-		if sep == None:  sep = " "
-		sep = sep + "|"
-		sep = sep[:1]
 		# block 0
 		if self.blkN == 0:
-			tmp = tmp[:( 3+1)*3-1] + sep + tmp[( 3+1)*3:]  # uid|
-			tmp = tmp[:( 4+1)*3-1] + sep + tmp[( 4+1)*3:]  # bcc|
-			tmp = tmp[:( 5+1)*3-1] + sep + tmp[( 5+1)*3:]  # sak|
-			tmp = tmp[:( 7+1)*3-1] + sep + tmp[( 7+1)*3:]  # atqa|
-			tmp = tmp[:(11+1)*3-1] + sep + tmp[(11+1)*3:]  # ....|....
+			s  = cBCYN + tmp[ 0*3:( 3+1)*3]
+			s += cCYN  + tmp[ 4*3:( 4+1)*3]
+			s += cBGRN + tmp[ 5*3:( 5+1)*3]
+			s += cGRN  + tmp[ 6*3:( 7+1)*3]
+			s += cBYEL + tmp[ 8*3:(15+1)*3]
 		# trailer
 		elif trl == True:
-			tmp = tmp[:( 5+1)*3-1] + sep + tmp[( 5+1)*3:]  # keya|
-			tmp = tmp[:( 8+1)*3-1] + sep + tmp[( 8+1)*3:]  # acl|
-			tmp = tmp[:( 9+1)*3-1] + sep + tmp[( 9+1)*3:]  # user|keyb
+			s  = cBYEL + tmp[ 0*3:( 5+1)*3]
+			s += cBMAG + tmp[ 6*3:( 8+1)*3]
+			s += cBBLU + tmp[ 9*3:( 9+1)*3]
+			s += cBYEL + tmp[10*3:(15+1)*3]
 		# data
 		else:
-			tmp = tmp[:( 3+1)*3-1] + sep + tmp[( 3+1)*3:]  # ....|....|....|....
-			tmp = tmp[:( 7+1)*3-1] + sep + tmp[( 7+1)*3:]
-			tmp = tmp[:(11+1)*3-1] + sep + tmp[(11+1)*3:]
-		out += tmp + " |"
+			s = [tmp[(i+0)*3:(i+4)*3] for i in range(0, len(tmp), 4)]
+			s = f"{cWHT}{s[0]}{cBWHT}{s[1]}{cWHT}{s[2]}{cBWHT}{s[3]}"
+		out += s + cNORM + " |"
 
 		#ascii
 		if ascii is True:
 			tmp = self.text
-			tmp = tmp[: 4] + " " + tmp[ 4:]
-			tmp = tmp[: 9] + " " + tmp[ 9:]
-			tmp = tmp[:14] + " " + tmp[14:]
-			out += " " + tmp + " |"
+			# block 0
+			if self.blkN == 0:
+				s  = cBCYN + tmp[ 0: 3+1] + " "
+				s += cCYN  + tmp[ 4: 4+1]
+				s += cBGRN + tmp[ 5: 5+1]
+				s += cGRN  + tmp[ 6: 7+1] + " "
+				s += cBYEL + tmp[ 8:11+1] + " " + tmp[12:15+1]
+			# trailer
+			elif trl == True:
+				s  = cBYEL + tmp[ 0: 3+1] + " " + tmp[ 4: 5+1]
+				s += cBMAG + tmp[ 6: 7+1] + " " + tmp[ 8: 8+1]
+				s += cBBLU + tmp[ 9: 9+1]
+				s += cBYEL + tmp[10:11+1] + " " + tmp[12:15+1]
+			# data
+			else:
+				s  = cWHT  + tmp[ 0: 3+1] + " "
+				s += cBWHT + tmp[ 4: 7+1] + " "
+				s += cWHT  + tmp[ 8:11+1] + " "
+				s += cBWHT + tmp[12:15+1]
+			out += " " + s + cNORM + " |"
 
 		return out
 
@@ -1217,7 +1386,8 @@ class Log:
 		self.fspec = None
 
 		# Prompt: default, in-use, enable_flag
-		self.prDF  = "[" + color("=", fg="yellow") + "] "
+#		self.prDF  = "[" + color("=", fg="yellow") + "] "
+		self.prDF  = f"[{cYEL}={cNORM}] "
 		self.prUse = self.prDF
 		self.prEn  = True
 
@@ -1326,7 +1496,6 @@ def  valxToList (valX):
 		txt = f"{valX:#X}".replace("X","x")
 
 	elif type(valX) == list:
-		print("lkjlkjlklkjlkjl")
 		lstB = valX
 		txt = f"{valX}"
 
@@ -1337,6 +1506,7 @@ def  valxToList (valX):
 
 #+============================================================================= ========================================
 import inspect
+import builtins
 
 #+============================================================================= dumpCard
 def dumpCard(obj):
@@ -1349,6 +1519,18 @@ def dump(obj):
 	print(f",~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 	dump_(obj, "|  ", "")
 	print(f"`~~~~~~~~~~~~~~~~~~~~~")
+
+#+============================================================================= printHex
+# like `print`, but handle numbers as padded hex
+#
+def  printHex (*args, **kwargs):
+	hex_args = [
+		f'0x{arg:02X}' if isinstance(arg, int) and arg <= 0xFF   else
+		f'0x{arg:04X}' if isinstance(arg, int) and arg <= 0xFFFF else
+		f'0x{arg:08X}' if isinstance(arg, int) else arg
+		for arg in args
+	]
+	print(*hex_args, **kwargs)
 
 #+============================================================================= dump_
 # The recursive bit
@@ -1393,31 +1575,32 @@ def dump_ (obj,  iprev="|  ",  istr=""):
 					# not a class - wrap strings in quotes
 					itemWrap = f'"{item}"' if isinstance(item, str) else item
 					istr = "   "
-					print(f"{indent}{istr}{itemWrap}")
+					printHex(f"{indent}{istr}", itemWrap)
 
 			# end of list
 			print(f"{indent}] /{attr}")
 
 		elif hasattr(entry, '__dict__'):
 			# if item is a class - recurse in to it
-			print(f"{indent}{attr}:")
+			print(f"***********************************{indent}{attr}:")
 			dump_(entry, indent, "¦  ")
 			print(f"{indent}`~~~~~~~~~~~~~~~~~ /{attr}")
 
 		else:
-			# not a class - wrap strings in quotes
-			entryWrap = f'"{entry}"' if isinstance(entry, str) else entry
-			print(f"{indent}{attr}: {entryWrap}")
+			# not a class - wrap strings in quotes - expand the "mask" in Blocks
+			if   isinstance(entry, str):  entry = f'"{entry}"'
+			elif attr == "mask"        :  entry = "0x" + format(entry, "04X") + " -> " + format(entry, "016b")[::-1]
+			print(f"{indent}{attr}: ", entry)
 
 #+============================================================================= ========================================
 import re
 
-def  mfcGet14a ():
+def  mfcGet14a (quiet=False, end="\n"):
 	atqa = None
 	sak  = None
 	prng = None
 
-	pRes, pCap = pm3Call("hf 14a info", quiet=True)
+	pRes, pCap = pm3Call("hf 14a info", quiet=quiet, end=end)
 	if pRes != 0:
 		log.say("Read fail")
 	else:
@@ -1441,31 +1624,34 @@ def  mfcGet14a ():
 	return (atqa, sak, prng)
 
 #+============================================================================= ========================================
-def  mfcIdentify (full=False):
+def  mfcIdentify (full=False, quiet=False):
 	# load a one-off/stand-alone block
 	blk0 = Block()
-	blk0.rdbl(0, quiet=True)
+	blk0.rdbl(0, quiet=quiet, end='')
 	if not blk0.rdOK:
-		log.say(f"Failed to read Manufacturing Data (Block #0)")
+		log.say(" - Failed to read Manufacturing Data (Block #0)", prompt='')
 		return False
+	else:
+		log.say(f" : {blk0.hexP}", prompt='')
 
-	atqa, sak, prng = mfcGet14a();
+	atqa, sak, prng = mfcGet14a(quiet=quiet, end='');
 	vsak = blk0.hexC[5*2:(5+1)*2]
-	log.say (f"ATQA={atqa} ; SAK={sak} ({vsak}) ; PRNG={prng}")
+	log.say (f" : ATQA={atqa} ; SAK={sak} ({vsak}) ; PRNG={prng}", prompt='')
 
+	if not quiet: log.say ("Checking database...")
 	match = []
 	for mfc in MFC_ALL:
 		cls = mfc()
 		nm = cls.__class__.__name__
-		log.say(f"{nm} ", end='')
+		log.say(f"  {nm} ", end='')
 		if hasattr(cls, 'match'):
 			log.say(f"match ", end='', prompt='')
 			if cls.match(sak, blk0):
-				log.say(f" \t( ok )", prompt='')
+				log.say(f" \t( {cGRN}ok{cNORM} )", prompt='')
 				match.append((nm, mfc))
 				if not full:  break
 			else:
-				log.say(f" \t( fail )", prompt='')
+				log.say(f" \t( {cRED}fail{cNORM} )", prompt='')
 		else:
 			log.say(f" nomatch", prompt='')
 
@@ -1493,22 +1679,22 @@ def  mfcBackdoorKeys (quiet=False):
 	bdKey = ""
 	blk0  = Block()
 
-	if blk0.rdbl(quiet=quiet) is False: 
-		log.say("Card not detected")
+	if blk0.rdbl(quiet=quiet, end='') is False: 
+		log.say(f" - {cRED}Card not detected{cNORM}", prompt='')
 		return None
+	else:
+		log.say(f" - {cGRN}Card detected{cNORM}", prompt='')
 
 	for h,k in klist:
 		if blk0.rdbl(hole=h, key=k, end='') is True:
-			s = color('ok', fg='green')
-			log.say(f"    ( {s} )", prompt='')
+			log.say(f"  ( {cGRN}ok{cNORM} )", prompt='')
 			bdKey = k
 			bdHole = h
 			break
-		s = color('fail', fg='yellow')
-		log.say(f"    ( {s} )", prompt='')
+		log.say(f"  ( {cRED}fail{cNORM} )", prompt='')
 
 	if bdKey == "":
-		log.say("\n No known backdoor key.", prompt="[" + color("!", fg="red") + "]")
+		log.say("\n No known backdoor key.", prompt="[{cRED}!{cNORM}]")
 		return None, None
 
 	if quiet is True:  log.resume(qlog)
@@ -1518,13 +1704,14 @@ def  mfcBackdoorKeys (quiet=False):
 def  main ():
 #	if not checkVer():
 #		return
+
 #	args  = parseCli()
 
 
 #	for i in range (256):
 #		print(format(i, "02X").replace("X","x") + "  " + format(i>>4, "04b") + "'" + format(i&15, "04b")+ f"  {i:#3d}  ", end='')
 #		pRes, pCap = pm3Call(f"hf mf rdbl --blk {i}", end='', quiet=True)
- #
+#	
 #		for lin in pCap.split('\n'):
 #			if (" | " in lin) and (lin[56] != " "):
 #				print(lin)
@@ -1532,27 +1719,28 @@ def  main ():
 #		else:
 #			print("Read Fail")
 #		
- #
+#	
 #	sys.exit(0)
-
 
 	#-----------------------------------------------------
 	# logfile not started - this will get buffered
-	log.say("Welcome to the start of the demo...")
+	myAnsi(True)
+	log.say(f"{cBLK}{onWHT} Welcome to the start of the demo... {cNORM}")
 
+	"""
 	#-----------------------------------------------------
 	# run the (known) backdoor key check
-	log.say(f"\nLet's see if we can jemmy this with a backdoor key...")
+	log.say(f"\n{onBLU}Let's see if we can find a backdoor key...{cEOL}{cNORM}")
 
 	bdKey, bdHole = mfcBackdoorKeys()
-	log.say(f"Found backdoor key: {bdHole}/{bdKey}")
+	log.say(f"Found backdoor key: {cGRN}{bdHole}{cNORM}/{cBGRN}{bdKey}{cNORM}")
 
 	#-----------------------------------------------------
 	# Grab the first 4 bytes of block 0 for the logfile name
-	log.say(f"\nGenerate the logfile name...")
+	log.say(f"\n{onBLU}Generate the logfile name...{cEOL}{cNORM}")
 
 	blk0 = Block()
-	blk0.rdbl(0, quiet=True)
+	blk0.rdbl(0)#, quiet=True)
 
 	if blk0.rdOK is False:
 		log.say("Failed to read Block #0 - bailing", prompt="[!] ")
@@ -1567,7 +1755,7 @@ def  main ():
 	# so we will assume a 4-byte [N]UID
 	uid     = blk0.hexC[:8]
 	logfile = log.start(f"{dpath}hf-mf-{uid}-log.txt")
-	log.say("Log file: " + color(f"{logfile}", fg="yellow"))
+	log.say(f"Log file: {cYEL}{logfile}{cNORM}")
 
 	#-----------------------------------------------------
 	# Check UID
@@ -1583,115 +1771,146 @@ def  main ():
 	# So we cannot auto-extract the UID without having picked a card type
 	# If in doubt, we can use the base class - which, as it stands,
 	#   assumes a (common) 4-byte [N]UID
-	log.say("\nUID Check {pass, fail}...")
+	log.say(f"\n{onBLU}UID Check {{pass, fail}}...{cEOL}{cNORM}")
 
 	mfc = MFClassic(name="sandpit")  # start with a blank Card
 	mfc.addSec(1, 1)                 # add 1 Sector, containing 1 Block (Block #0)
-	mfc.blk[0].rdbl(0)               # reload block 0, this time in to our virtual card
-	uid, bcc = mfc.uid()             # now we can start using Card processing features
+
+	mfc.block(0).rdbl(0)             # virtual card block(0) = ReaDBLock(0) from real card
+
+	# now we can start using Card processing features
+	uid, bcc = mfc.uid()
 
 	# Yes, it would probably, on this occasion, been easier to do this
-	# But I wanted an excuse to show how it is done "properly"
+	# But I wanted an excuse to demo the API
 #	uid = blk0.hexB[0:4]
 #	bcc = blk0.hexB[4]
 
 	#-----------------------------------------------------
-	# first one should PASS, second should FAIL
+	# First one should PASS; second should FAIL
 	for i in range(0, 1+1):
 		log.say(f"  #{i+1} : [{uid} / " + f"{bcc+i:#2X}]"[2:] + ": ", end='')
 		ok, chk = mfc.uidIsValid(uid, bcc+i)
 		if ok is True:
-			log.say("Pass", prompt='')
+			log.say(f"{cGRN}Pass{cNORM}", prompt='')
 		else:
 			if chk < 0:
-				log.say("Bad UID", prompt='')
+				log.say("{cRED}Bad UID{cNORM}", prompt='')
 			else:
-				log.say(f"Fail (should be " + f"{chk:#2X})"[2:], prompt='')
+				log.say(f"{cRED}Fail{cNORM} (should be " + f"{chk:#2X})"[2:], prompt='')
+
+	# that's that demo done
+	del mfc
 
 	#-----------------------------------------------------
-	# Idenitfy the card from the manufacturing data
+	# Idenitfy the card (on the reader) from the manufacturing data
 	# we will ask for the FULL list of all matches (not just the first match)
-	log.say("\nTry to identify the card...")
+	# ...cos this is API demo/test code, and we'd probably like to spot any overlaps!
+	log.say(f"\n{onBLU}Try to identify the card...{cEOL}{cNORM}")
 
 	match = mfcIdentify(full=True)
 	if   len(match) == 0:
-		log.say("No Chip Signature matches found")
-		myCard = MFC_FM11RF08()
+		log.say(f"{cRED}No Chip Signature matches found{cNORM}")
 
 	elif len(match) == 1:
-		log.say(f"Chip Signature matches: {match[0][0]}")
+		log.say(f"Chip Signature matches: {cBGRN}{match[0][0]}{cNORM}")
 		myCard = match[0][1]()
 
 	else:
 		names = []
 		names.append(m[0] for m in match)
 		log.say(f"Problem: Multiple Chip Signatures match: {names}")
-		sys.exit(9)
+
+	# we're not actually going to use it at this time
+	del myCard
 
 	#-----------------------------------------------------
 	# show off the two dump functions
 	#   1. developers heirarchical data dump
 	#   2. user dnump
+	log.say(f"\n{onBLU}Demo the editing functions...{cEOL}{cNORM}")
 
-	# let's pad the sector to 4 blocks first
-#mfc.sector(0).addBlk(3)
+	myCard = MFClassic(name="dumpdemo")  # start with a blank Card
+	myCard.addSec(2, 3)                  # add 2 Sectors, each containing 3 Blocks
 
-	# and load the control info
-	mfc.get14a()
+	# generate some data to dump
+	myCard.block(0).rdbl(0, quiet=True)  # load block 0
+	myCard.get14a(quiet=True)            # load the control info
 
-	log.say("\nDevelopers dump (of card)...")
-	dump(mfc)
+	# demo the poke functions
+	myCard.block(1).poke( 0, 0xff)       # ff -- ee dd -- aa bb -- 11 22 -- "A "B "C -- --
+	myCard.block(1).poke( 2, 0xEEDD)     # 0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15
+	myCard.block(1).poke( 5, "AA BB")
+	myCard.block(1).poke( 8, "1122")
+	myCard.block(1).poke(11, [65,66,67])
 
-	log.say("\nUser dump (of card)...")
-	log.say(mfc.show(hdr=True))
+	# This mthod MAY write to the wrong place, or completely fail if the blocks are non-contiguous
+	myCard.blk[2].poke(  0, 0XfA)            # No!
+	myCard.block(2).poke(2, 0xEe)            # Yes!
+	# same thing goes for Sectors
+	myCard.sec[0].block(2).poke(   4, 0x88)  # No!
+	myCard.sector(0).block(2).poke(6, 160 )  # Yes!
+	#... There is an argument to be made for making sec and blk private
+	#... The argument against it is that it will made the dump() function problematic
 
+	# let try the pokeText function, and make it overflow the end of the block
+	log.say("Trigger an overflow exception...")
+	try:
+		dateStr = datetime.date.today().strftime("%Y-%m-%d")  # YYYY-MM-DD
+		myCard.sector(1).block(0).pokeT(10, dateStr)
+	except ValueError as e:
+		log.say(f"{cRED}Exception: {e}{cNORM}")
 
+	# there is also pokeX which marks a byte as None/Unknown
+	myCard.sector(1).block(0).pokeX(13, 2)  # set 2 bytes, starting with byte 13, to "unused"
 
+	log.say("\nShow full log history (for the whole card)")
+	log.say(myCard.history().replace("; ","\n"))
 
+	log.say("\nShow log history for Sector 0")
+	log.say(myCard.sector(0).history().replace("; ","\n"))
 
+	log.say("\nShow log history Block 3")
+	log.say(myCard.block(3).history().replace("; ","\n"))
 
-
-
-
-
-
-
-
-
-
-
-	sys.exit()
+	#-----------------------------------------------------
+	log.say(f"\n{onBLU}Developers dump (of [virtual] card)...{cEOL}{cNORM}")
+# This generates an abusive amount of output, so it's commented out
+	log.say("[REDACTED]")
 #	dump(myCard)
 
 	#-----------------------------------------------------
-	log.pause()
+	log.say(f"\n{onBLU}User dump (of [virtual] card)...{cEOL}{cNORM}")
+	log.say(myCard.show(hdr=True))
 
+	"""
 	#-----------------------------------------------------
-	# lots of way to modify the data
-	blk0.poke(0, 0xff)
-	blk0.poke(1, 0xEEDD)
-	blk0.poke(3, "AA BB")
-	blk0.poke(5, "1122")
-	blk0.poke(7, [65,66,67])
-#	log.say(blk0.to_json())
+	# Let's try this for real
+	log.say(f"\n{onBLU}Let's try this for real...{cEOL}{cNORM}")
 
-	try:
-		blk0.pokeT(10, datetime.date.today().strftime("%Y-%m-%d"))
-	except ValueError as e:
-		log.say(f"Exception: {e}")
+	match = mfcIdentify()
+	if   len(match) == 0:
+		log.say(f"{cRED}No Chip Signature matches found{cNORM}")
+		sys.exit(1)
 
-	blk0.pokeX(6, 4)
-#	log.say(blk0.to_json())
+	elif len(match) != 1:
+		names = []
+		names.append(m[0] for m in match)
+		log.say(f"{cRED}Problem: Multiple Chip Signatures match:{cNORM} {names}")
+		sys.exit(2)
 
-	#-----------------------------------------------------
-	log.resume()
+	else:
+		log.say(f"Chip Signature matches: {cBGRN}{match[0][0]}{cNORM}")
+		myCard = match[0][1]()
 
-	card = MFC_DEMO("myCard")
-	card.blk[2].poke(0, 0xff)
-	card.sec[1].blk[0].poke(1, 0xee)
-#	dumpCard(card)
+	bdKey, bdHole = mfcBackdoorKeys()
+	log.say(f"Found backdoor key: {cGRN}{bdHole}{cNORM}/{cBGRN}{bdKey}{cNORM}")
 
-	dump(blk0)
+	for b in myCard.blocks():
+		b.rdbl(b.blkN, hole=bdHole, key=bdKey)
+
+	log.say(myCard.show(hdr=True))
+
 
 #++============================================================================ ========================================
 if __name__ == "__main__":
