@@ -1,0 +1,7 @@
+	#+=========================================================================
+	def  whoami (self):
+		for ref in gc.get_referrers(self):
+			if isinstance(ref, dict):
+				for key, val in ref.items():
+					if val is self:
+						return key
