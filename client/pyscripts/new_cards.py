@@ -1,6 +1,6 @@
 # IF YOU CREATE A NEW CARD, REMEMBER TO ADD IT TO THE LIST AT THE END !
 
-from new_mfc import MFClassic, Sector, Block, Key, Keyhole
+from new_mfc import *
 
 #%%============================================================================ ========================================
 # 1K as 16*4*16                                                                  MFClassic( MFC_1k )

@@ -85,4 +85,7 @@ class Log:
 				# buffering
 				self.buf += s + end
 
+#------------------------------------------------------------------------------ ----------------------------------------
+# A logging object thta can be used by everything that imports from this file
+#
 log = Log()

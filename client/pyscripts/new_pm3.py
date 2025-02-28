@@ -1,12 +1,13 @@
-import new_log
-
 import pm3
 import json
+
+from new_log  import log
+from new_ansi import *
 
 #============================================================================== ========================================
 #                                                                                PM3 Preferences
 #============================================================================== ========================================
-class Pref:
+class Pm3Pref:
 	DumpPath  = "file.default.dumppath"
 	SavePath  = "file.default.savepath"
 	TracePath = "file.default.tracepath"
@@ -28,3 +29,8 @@ def  pm3Call (cmd,  end='\n',  quiet=False):
 	pRes = p.console(cmd)
 	pCap = p.grabbed_output
 	return pRes, pCap
+
+#+============================================================================= ========================================
+#def  pm3Test ():
+#	print("pm3   : ", end='')
+#	print(vars(log))

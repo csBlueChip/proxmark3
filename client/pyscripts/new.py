@@ -1,27 +1,3 @@
-from new_log import Log
-print("foo")
-log = Log()
-print(log)
-
-from new_ansi import \
-	cBLK, cBLU, cRED, cMAG, cGRN, cCYN, cYEL, cWHT, \
-	cBBLK, cBBLU, cBRED, cBMAG, cBGRN, cBCYN, cBYEL, cBWHT, \
-	cDBLK, cDBLU, cDRED, cDMAG, cDGRN, cDCYN, cDYEL, cDWHT, \
-	cDGRY, cLGRY, cBRN, \
-	onBLK, onBLU, onRED, onMAG, onGRN, onCYN, onYEL, onWHT, \
-	cEOL, cNORM, \
-	myAnsi
-
-#from new_log import log
-
-#import new_mfc
-from new_mfc import MFClassic, Sector, Block, Key, Keyhole
-
-import new_cards
-
-
-import new_pm3
-
 """
 doegox' id algorithm
 https://gist.github.com/doegox/1ddc5725d0f6e3e58a023f6ffbff0d8c
@@ -60,70 +36,27 @@ dirty/clean edit state needs to ripple up
 # ------------------------------------------------------------------------------
 # Imports
 #
-import re
-import os
-import sys
-import argparse
-#import pm3
-import struct
-#import json
-import datetime
-import gc
+import pm3
 
-##+-============================================================================ ========================================
-## Optional color support .. `pip install ansicolors`
-##
-#try:
-#    from colors import color
-#except ModuleNotFoundError:
-#    def color(s, fg=None):
-#        _ = fg
-#        return str(s)
-#
+from new_ansi  import *    # colour
+from new_log   import log  # logging
+from new_pm3   import *    # proxmark API
+from new_mfc   import *    # mfc classes & helper funtions
+from new_cards import *    # known cards
 
+import re        # regex
+import os        # OS speific (eg. dir slash)
+import sys       # system API
+import argparse  # CLI argument parser
+import datetime  # date & time processing
 
+#import struct    # C struct data
+#import json      # JSON processor
+#import gc        # Garbage Collector
 
 #+============================================================================= ========================================
-# Convert the input "value" to a list of bytes
-#
-# Returns a tuple: (listOfBytes[], stringRepresentation)
-#    The "string" is useful for logging
-#
-# Here are some examples:
-#                      |_String_______
-#   poke(0, 0xff)        0xFF
-#   poke(1, 0xEEDD)      0xEEDD
-#   poke(3, "AA BB")     "AA BB"
-#   poke(5, "1122")      "1122"
-#   poke(7, [65,66,67])  "[65,66,67]"
-#
-from functools import reduce
-
-def  valxToList (valX):
-	#! should I be using `isinstance(x, thing)` ?
-	if type(valX) == str:
-		lstB = valX.replace(" ", "")
-		if not all(c in set("0123456789abcdefABCDEF") for c in lstB):
-			return None
-		lstB = list(bytes.fromhex(lstB))
-		txt = f"\"{valX}\""
-
-	elif type(valX) == int:
-		lstB = list(bytes.fromhex(hex(valX)[2:]))
-		txt = f"{valX:#X}".replace("X","x")
-
-	elif type(valX) == list:
-		lstB = valX
-		txt = f"{valX}"
-
-	else:
-		return (None, "")
-
-	return (lstB, txt)
-
-#+============================================================================= ========================================
-import inspect
-import builtins
+#import inspect
+#import builtins
 
 #+============================================================================= dumpCard
 def dumpCard(obj):
@@ -348,7 +281,7 @@ def  mfcGuessKey (card, klist):
 		if sec.block(0).rdbl(hole=Keyhole.B, key=ff):  return key, Keyhole.B
 
 	# NFCForum MAD key A
-	log.say
+#	log.say
 	if card.sector(0).block(0).rdbl(hole=Keyhole.A, key="a0a1a2a3a4a5"):  return "a0a1a2a3a4a5", Keyhole.A
 	# NFCForum MAD key B
 	if card.sector(0).block(0).rdbl(hole=Keyhole.B, key="b0b1b2b3b4b5"):  return "b0b1b2b3b4b5", Keyhole.B
@@ -596,7 +529,7 @@ def  main ():
 	log.say(f"\n{onBLU}Let's try this for real...{cEOL}{cNORM}")
 
 	match = mfcIdentify()
-	if   len(match) == 0:
+	if   match is None or len(match) == 0:
 		log.say(f"{cRED}No Chip Signature matches found{cNORM}")
 		sys.exit(1)
 

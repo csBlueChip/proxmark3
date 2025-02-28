@@ -1,14 +1,3 @@
-"""
-from new_ansi import \
-	cBLK, cBLU, cRED, cMAG, cGRN, cCYN, cYEL, cWHT, \
-	cBBLK, cBBLU, cBRED, cBMAG, cBGRN, cBCYN, cBYEL, cBWHT, \
-	cDBLK, cDBLU, cDRED, cDMAG, cDGRN, cDCYN, cDYEL, cDWHT, \
-	cDGRY, cLGRY, cBRN, \
-	onBLK, onBLU, onRED, onMAG, onGRN, onCYN, onYEL, onWHT, \
-	cEOL, cNORM, \
-	myAnsi
-"""
-
 #+============================================================================= ========================================
 # I'm not screwing around with virtual python environments just to get ANSI colours working!
 #
@@ -94,10 +83,6 @@ def  myAnsi (enable=True):
 		cDYEL = "\033[2;33m"
 		cDWHT = "\033[2;37m"
 
-		cDGRY = cBBLK         # synonyms
-		cLGRY = cDWHT
-		cBRN  = cDYEL
-
 		onBLK = "\033[40m"    # paper colour
 		onBLU = "\033[44m"
 		onRED = "\033[41m"
@@ -138,10 +123,6 @@ def  myAnsi (enable=True):
 		cDYEL = ""
 		cDWHT = ""
 
-		cDGRY = ""
-		cLGRY = ""
-		cBRN  = ""
-
 		onBLK = ""
 		onBLU = ""
 		onRED = ""
@@ -154,3 +135,8 @@ def  myAnsi (enable=True):
 		cEOL  = ""
 
 		cNORM = ""
+
+	# synonyms
+	cDGRY = cBBLK
+	cLGRY = cDWHT
+	cBRN  = cDYEL
