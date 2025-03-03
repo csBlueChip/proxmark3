@@ -7,7 +7,7 @@ class Log:
 		self.fspec = None
 
 		# Prompt: default, in-use, enable_flag
-#		self.prDF  = f"[{ansi.cYEL}={ansi.cNORM}] "
+#		self.prDF  = f"[{c.YEL}={c.NORM}] "
 		self.prDF  = f"[=] "
 		self.prUse = self.prDF
 		self.prEn  = True

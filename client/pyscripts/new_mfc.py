@@ -1,6 +1,7 @@
 import re
 
-from new_pm3 import *
+from new_pm3  import *
+from new_ansi import c
 
 #%============================================================================= ========================================
 # Keyhole names                                                                  Keyhole
@@ -679,19 +680,24 @@ class Block:
 	# The data from the read is parsed in to the Class
 	#
 	def  rdbl (self,  n=-1,  hole=None,  key="",  retry=3,  end='\n',  quiet=False):
+		tmp = self.blkN
 		self.clear()
+		self.blkN = tmp
 
 		# build the PM3 command
-		if n == -1:
-			n = self.blkN
-		cmd = f"hf mf rdbl --blk {n}"
+		cmd = f"hf mf rdbl"
 
 		if (hole != None):
 			self.hole = hole
 			cmd      += f" -c {self.hole}"
+
 		if (key  != ""):
 			self.keyH = key.replace(" ", "")
 			cmd      += f" --key {self.keyH}"
+
+		if n == -1:  n = self.blkN
+		cmd += f" --blk {n}"
+
 		self.addHist(cmd)
 
 		for self.tryN in range(1, retry+1):
@@ -704,6 +710,7 @@ class Block:
 					self.hexC = self.hexP.replace(" ", "")
 					self.hexB = list(bytes.fromhex(self.hexC))
 					self.lenB = len(self.hexB)
+
 					self.text = ''.join(chr(b) if 32 <= b <= 126 else self.notA for b in self.hexB)
 					self.rdOK = True
 					self.mask = (1 << self.lenB) -1
@@ -835,76 +842,83 @@ class Block:
 	def  show (self, hdr=False, ascii=True, sep="."):
 		out = ""
 
+#		if hdr is True:
+#			if ascii is True:
+#				out += f"| {c.BBLU}Sector{c.NORM}:{c.BGRN}Blk{c.NORM} |{c.MAG}ACL{c.NORM}| {c.WHT}00 01 02 03 {c.BWHT}04 05 06 07 {c.WHT}08 09 10 11 {c.BWHT}12 13 14 15{c.NORM} | ASCII               |\n"
+#				out += f"|------------|---|-------------------------------------------------|-----.----.----.-----|\n"
+#			else:
+#				out += f"| {c.BBLU}Sector{c.NORM}:{c.BGRN}Blk{c.NORM} |{c.MAG}ACL{c.NORM}| {c.WHT}00 01 02 03 {c.BWHT}04 05 06 07 {c.WHT}08 09 10 11 {c.BWHT}12 13 14 15{c.NORM} |\n"
+#				out += f"|------------|---|-------------------------------------------------|\n"
+
 		if hdr is True:
-			if ascii is True:
-#				out += f"| Sector:Blk |ACL| 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 | ASCII               |\n"
-				out += f"| {cBBLU}Sector{cNORM}:{cBGRN}Blk{cNORM} |{cMAG}ACL{cNORM}| {cWHT}00 01 02 03 {cBWHT}04 05 06 07 {cWHT}08 09 10 11 {cBWHT}12 13 14 15{cNORM} | ASCII               |\n"
-				out += f"|------------|---|-------------------------------------------------|-----.----.----.-----|\n"
-			else:
-#				out += f"| Sector:Blk |ACL| Hex                                             |\n"
-				out += f"| {cBBLU}Sector{cNORM}:{cBGRN}Blk{cNORM} |{cMAG}ACL{cNORM}| {cWHT}00 01 02 03 {cBWHT}04 05 06 07 {cWHT}08 09 10 11 {cBWHT}12 13 14 15{cNORM} |"
-				out += f"|------------|---|-------------------------------------------------|\n"
+			out += f"| {c.BBLU}Sector{c.NORM}:{c.BGRN}Blk{c.NORM} |{c.MAG}ACL{c.NORM}| {c.WHT}00 01 02 03 {c.BWHT}04 05 06 07 {c.WHT}08 09 10 11 {c.BWHT}12 13 14 15{c.NORM} |"
+			if ascii is True:  out += " ASCII               |"
+			out += "\n"
+
+			out += "|------------|---|-------------------------------------------------|"
+			if ascii is True:  out += "-----.----.----.-----|"
+			out += "\n"
 
 		# sector
-		trl = False
+		trl = False  # trailer block
 		if self.__parent is not None:
 			sec = self.__parent.secN
 			idx = self.blkN - self.__parent.blk[0].blkN
 			if idx == self.__parent.bCnt -1:
 				trl = True
-			tmp = f"{cBBLU}{sec:#2d}[{idx:#2d}]"
+			tmp = f"{c.BBLU}{sec:#2d}[{idx:#2d}]"
 		else:
-			tmp = "{cBBLU}  [  ]"
+			tmp = "{c.BBLU}  [  ]"
 		# +block
-		out += "| " + tmp + f"{cNORM}:{cBGRN}{self.blkN:#3d}{cNORM} |"
+		out += "| " + tmp + f"{c.NORM}:{c.BGRN}{self.blkN:#3d}{c.NORM} |"
 
 		# acl
-		out += f"{cMAG} ? {cNORM}| "
+		out += f"{c.MAG} ? {c.NORM}| "
 
 		# hex
 		tmp = self.hexP
 		# block 0
 		if self.blkN == 0:
-			s  = cBCYN + tmp[ 0*3:( 3+1)*3]
-			s += cCYN  + tmp[ 4*3:( 4+1)*3]
-			s += cBGRN + tmp[ 5*3:( 5+1)*3]
-			s += cGRN  + tmp[ 6*3:( 7+1)*3]
-			s += cBYEL + tmp[ 8*3:(15+1)*3]
+			s  = c.BCYN + tmp[ 0*3:( 3+1)*3]
+			s += c.CYN  + tmp[ 4*3:( 4+1)*3]
+			s += c.BGRN + tmp[ 5*3:( 5+1)*3]
+			s += c.GRN  + tmp[ 6*3:( 7+1)*3]
+			s += c.BYEL + tmp[ 8*3:(15+1)*3]
 		# trailer
 		elif trl == True:
-			s  = cBYEL + tmp[ 0*3:( 5+1)*3]
-			s += cBMAG + tmp[ 6*3:( 8+1)*3]
-			s += cBBLU + tmp[ 9*3:( 9+1)*3]
-			s += cBYEL + tmp[10*3:(15+1)*3]
+			s  = c.BYEL + tmp[ 0*3:( 5+1)*3]
+			s += c.BMAG + tmp[ 6*3:( 8+1)*3]
+			s += c.BBLU + tmp[ 9*3:( 9+1)*3]
+			s += c.BYEL + tmp[10*3:(15+1)*3]
 		# data
 		else:
 			s = [tmp[(i+0)*3:(i+4)*3] for i in range(0, len(tmp), 4)]
-			s = f"{cWHT}{s[0]}{cBWHT}{s[1]}{cWHT}{s[2]}{cBWHT}{s[3]}"
-		out += s + cNORM + " |"
+			s = f"{c.WHT}{s[0]}{c.BWHT}{s[1]}{c.WHT}{s[2]}{c.BWHT}{s[3]}"
+		out += s + c.NORM + " |"
 
 		#ascii
 		if ascii is True:
 			tmp = self.text
 			# block 0
 			if self.blkN == 0:
-				s  = cBCYN + tmp[ 0: 3+1] + " "
-				s += cCYN  + tmp[ 4: 4+1]
-				s += cBGRN + tmp[ 5: 5+1]
-				s += cGRN  + tmp[ 6: 7+1] + " "
-				s += cBYEL + tmp[ 8:11+1] + " " + tmp[12:15+1]
+				s  = c.BCYN + tmp[ 0: 3+1] + " "
+				s += c.CYN  + tmp[ 4: 4+1]
+				s += c.BGRN + tmp[ 5: 5+1]
+				s += c.GRN  + tmp[ 6: 7+1] + " "
+				s += c.BYEL + tmp[ 8:11+1] + " " + tmp[12:15+1]
 			# trailer
 			elif trl == True:
-				s  = cBYEL + tmp[ 0: 3+1] + " " + tmp[ 4: 5+1]
-				s += cBMAG + tmp[ 6: 7+1] + " " + tmp[ 8: 8+1]
-				s += cBBLU + tmp[ 9: 9+1]
-				s += cBYEL + tmp[10:11+1] + " " + tmp[12:15+1]
+				s  = c.BYEL + tmp[ 0: 3+1] + " " + tmp[ 4: 5+1]
+				s += c.BMAG + tmp[ 6: 7+1] + " " + tmp[ 8: 8+1]
+				s += c.BBLU + tmp[ 9: 9+1]
+				s += c.BYEL + tmp[10:11+1] + " " + tmp[12:15+1]
 			# data
 			else:
-				s  = cWHT  + tmp[ 0: 3+1] + " "
-				s += cBWHT + tmp[ 4: 7+1] + " "
-				s += cWHT  + tmp[ 8:11+1] + " "
-				s += cBWHT + tmp[12:15+1]
-			out += " " + s + cNORM + " |"
+				s  = c.WHT  + tmp[ 0: 3+1] + " "
+				s += c.BWHT + tmp[ 4: 7+1] + " "
+				s += c.WHT  + tmp[ 8:11+1] + " "
+				s += c.BWHT + tmp[12:15+1]
+			out += " " + s + c.NORM + " |"
 
 		return out
 

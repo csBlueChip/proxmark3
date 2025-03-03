@@ -36,23 +36,40 @@ dirty/clean edit state needs to ripple up
 # ------------------------------------------------------------------------------
 # Imports
 #
-import pm3
-
-from new_ansi  import *    # colour
+from new_ansi  import c    # colour
 from new_log   import log  # logging
 from new_pm3   import *    # proxmark API
 from new_mfc   import *    # mfc classes & helper funtions
 from new_cards import *    # known cards
 
-import re        # regex
-import os        # OS speific (eg. dir slash)
-import sys       # system API
-import argparse  # CLI argument parser
-import datetime  # date & time processing
+import re                  # regex
+import os                  # OS speific (eg. dir slash)
+import sys                 # system API
+import argparse            # CLI argument parser
+import datetime            # date & time processing
 
-#import struct    # C struct data
-#import json      # JSON processor
-#import gc        # Garbage Collector
+#import struct              # C struct data
+#import json                # JSON processor
+#import gc                  # Garbage Collector
+
+#+============================================================================= ========================================
+# Parse the CLi argument
+MFC_none = 0x00
+MFC_1k   = 0x08
+MFC_4k40 = 0x18
+MFC_4k64 = 0x20
+
+def  parseCli ():
+	p = argparse.ArgumentParser(description='Demo script')
+
+	p.add_argument('--1k',   action='store_const', const=MFC_1k,   dest='size', help='assume 16*4*16 = 1K')
+	p.add_argument('--4k64', action='store_const', const=MFC_4k40, dest='size', help='assume 64*4*16 = 4K (SAK=20)')
+	p.add_argument('--4k40', action='store_const', const=MFC_4k64, dest='size', help='assume 32*4*16 + 8*16*16 = 4K (SAK=18)')
+
+	p.set_defaults(size=MFC_none)
+
+	args = p.parse_args()
+	return args
 
 #+============================================================================= ========================================
 #import inspect
@@ -73,7 +90,7 @@ def dump(obj):
 #+============================================================================= printHex
 # like `print`, but handle numbers as padded hex
 #
-def  printHex (*args, **kwargs):
+def  printHex (*args,  **kwargs):
 	hex_args = [
 		f'0x{arg:02X}' if isinstance(arg, int) and arg <= 0xFF   else
 		f'0x{arg:04X}' if isinstance(arg, int) and arg <= 0xFFFF else
@@ -143,9 +160,9 @@ def dump_ (obj,  iprev="|  ",  istr=""):
 			print(f"{indent}{attr}: ", entry)
 
 #+============================================================================= ========================================
-import re
+#import re
 
-def  mfcGet14a (quiet=False, end="\n"):
+def  mfcGet14a (quiet=False,  end="\n"):
 	atqa = None
 	sak  = None
 	prng = None
@@ -174,10 +191,10 @@ def  mfcGet14a (quiet=False, end="\n"):
 	return (atqa, sak, prng)
 
 #+============================================================================= ========================================
-def  mfcIdentify (full=False, quiet=False):
+def  mfcIdentify (hole,  key,  full=False,  quiet=False):
 	# load a one-off/stand-alone block
 	blk0 = Block()
-	blk0.rdbl(0, quiet=quiet, end='')
+	blk0.rdbl(0, hole=hole, key=key, quiet=quiet, end='')
 	if not blk0.rdOK:
 		log.say(" - Failed to read Manufacturing Data (Block #0)", prompt='')
 		return None
@@ -197,18 +214,48 @@ def  mfcIdentify (full=False, quiet=False):
 		if hasattr(cls, 'match'):
 			log.say(f"match ", end='', prompt='')
 			if cls.match(sak, blk0):
-				log.say(f" \t( {cGRN}ok{cNORM} )", prompt='')
+				log.say(f" \t( {c.GRN}ok{c.NORM} )", prompt='')
 				match.append((nm, mfc))
-				if not full:  break
+				if not full:  break  # break after first match
 			else:
-				log.say(f" \t( {cRED}fail{cNORM} )", prompt='')
+				log.say(f" \t( {c.RED}fail{c.NORM} )", prompt='')
 		else:
 			log.say(f" nomatch", prompt='')
 
 	return match
 
 #+============================================================================= ========================================
-def  mfcGuessKey (card, klist):
+def  mfcGuessKey (card=None,  blk=None,  klist=None):
+
+	if card is None:
+		if blk is None:
+			log.say("No attack vector")
+			return None, None
+		if blk >= 0:    # block specified (positive number, eg. 10 means block #10)
+			#!sanity check
+			cnt = blk
+		else:           # block count specified (negative number, eg. -10 is 10 blocks {0..9})
+			#!sanity check
+			cnt = -blk
+
+		card        = MFClassic(1,cnt,16)   # a card with 1 sector of 'cnt' block with 16 bytes
+		sector      = card.sector(0)
+		sector.secN = 0
+		for b in range(0, cnt):             # number the blocks
+			sector.block(b).blkN = b
+
+	else:  # Card provided
+		if blk is None:      # all blocks on card
+			cnt = card.bCnt
+		if blk >= 0:         # block specified (positive number, eg. 10 means block #10)
+			#!sanity check
+			cnt = blk
+		else:                # block count specified (negative number, eg. -10 is 10 blocks {0..9})
+			#!sanity check
+			cnt = -blk
+
+	blist = card.blocks()
+
 	# the caller may append 1 or more keys to the start of the list
 	if (type(klist) == str) or (type(klist) == int):
 		klist = [klist]
@@ -274,6 +321,15 @@ def  mfcGuessKey (card, klist):
 		"96a301bce267",
 	]
 
+
+
+
+
+
+
+
+
+
 	# first we'll try ffffffffffff in ALL slots
 	ff = "FFFFFFFFFFFF"
 	for sec in card.sectors():
@@ -310,74 +366,63 @@ def  mfcBackdoorKeys (quiet=False):
 			klist.extend([k for k in cls.bdKey if k not in klist])
 
 	# sort by keyhole
-	# pragmatically, this will makes things more efficient
+	# pragmatically, this will make things more efficient
 	klist = sorted(klist, key=lambda x: x[0])
 
-	log.say(f"Trying known backdoor keys: {klist}")
+	log.say(f"Trying known backdoor keys: {klist}", end='')
 
 	# at this point in history, we can do this:
 	bdKey = ""
-	blk0  = Block()
+	blk0  = Block(16)  # 16byte block
 
-	if blk0.rdbl(0, quiet=quiet, end='') is False: 
-		log.say(f" - {cRED}Card not detected{cNORM}", prompt='')
-		return None
+	if mfcChkCard() is False:
+		log.say(f" - {c.RED}Card not detected{c.NORM}", prompt='')
+		return None, None
 	else:
-		log.say(f" - {cGRN}Card detected{cNORM}", prompt='')
+		log.say(f" - {c.GRN}Card detected{c.NORM}", prompt='')
 
 	for h,k in klist:
 		if blk0.rdbl(0, hole=h, key=k, end='') is True:
-			log.say(f"  ( {cGRN}ok{cNORM} )", prompt='')
+			log.say(f"  ( {c.GRN}ok{c.NORM} )", prompt='')
 			bdKey = k
 			bdHole = h
 			break
-		log.say(f"  ( {cRED}fail{cNORM} )", prompt='')
+		log.say(f"  ( {c.RED}fail{c.NORM} )", prompt='')
 
 	if bdKey == "":
-		log.say("\n No known backdoor key.", prompt=f"[{cRED}!{cNORM}]")
+		log.say("\n No known backdoor key.", prompt=f"[{c.RED}!{c.NORM}]")
 		return None, None
 
 	if quiet is True:  log.resume(qlog)
 	return bdKey, bdHole
+
+#+============================================================================= ========================================
+def  mfcChkCard ():
+	res, cap = pm3Call("hf mf rdbl --blk 0", quiet=True)
+	return True if ((res is True) or ("Can't select card" not in cap)) else False
 
 #++============================================================================ ========================================
 def  main ():
 #	if not checkVer():
 #		return
 
-#	args  = parseCli()
-
-
-#	for i in range (256):
-#		print(format(i, "02X").replace("X","x") + "  " + format(i>>4, "04b") + "'" + format(i&15, "04b")+ f"  {i:#3d}  ", end='')
-#		pRes, pCap = pm3Call(f"hf mf rdbl --blk {i}", end='', quiet=True)
-#	
-#		for lin in pCap.split('\n'):
-#			if (" | " in lin) and (lin[56] != " "):
-#				print(lin)
-#				break
-#		else:
-#			print("Read Fail")
-#		
-#	
-#	sys.exit(0)
+	args  = parseCli()
 
 	#-----------------------------------------------------
 	# logfile not started - this will get buffered
-	myAnsi(True)
-	log.say(f"{cBLK}{onWHT} Welcome to the start of the demo... {cNORM}")
+	log.say(f"{c.BLK}{c.onWHT} Welcome to the start of the demo... {c.NORM}")
 
 	"""
 	#-----------------------------------------------------
 	# run the (known) backdoor key check
-	log.say(f"\n{onBLU}Let's see if we can find a backdoor key...{cEOL}{cNORM}")
+	log.say(f"\n{c.onBLU}Let's see if we can find a backdoor key...{c.EOL}{c.NORM}")
 
 	bdKey, bdHole = mfcBackdoorKeys()
-	log.say(f"Found backdoor key: {cGRN}{bdHole}{cNORM}/{cBGRN}{bdKey}{cNORM}")
+	log.say(f"Found backdoor key: {c.GRN}{bdHole}{c.NORM}/{c.BGRN}{bdKey}{c.NORM}")
 
 	#-----------------------------------------------------
 	# Grab the first 4 bytes of block 0 for the logfile name
-	log.say(f"\n{onBLU}Generate the logfile name...{cEOL}{cNORM}")
+	log.say(f"\n{c.onBLU}Generate the logfile name...{c.EOL}{c.NORM}")
 
 	blk0 = Block()
 	blk0.rdbl(0)#, quiet=True)
@@ -395,7 +440,7 @@ def  main ():
 	# so we will assume a 4-byte [N]UID
 	uid     = blk0.hexC[:8]
 	logfile = log.start(f"{dpath}hf-mf-{uid}-log.txt")
-	log.say(f"Log file: {cYEL}{logfile}{cNORM}")
+	log.say(f"Log file: {c.YEL}{logfile}{c.NORM}")
 
 	#-----------------------------------------------------
 	# Check UID
@@ -411,7 +456,7 @@ def  main ():
 	# So we cannot auto-extract the UID without having picked a card type
 	# If in doubt, we can use the base class - which, as it stands,
 	#   assumes a (common) 4-byte [N]UID
-	log.say(f"\n{onBLU}UID Check {{pass, fail}}...{cEOL}{cNORM}")
+	log.say(f"\n{c.onBLU}UID Check {{pass, fail}}...{c.EOL}{c.NORM}")
 
 	mfc = MFClassic(name="sandpit")  # start with a blank Card
 	mfc.addSec(1, 1)                 # add 1 Sector, containing 1 Block (Block #0)
@@ -432,12 +477,12 @@ def  main ():
 		log.say(f"  #{i+1} : [{uid} / " + f"{bcc+i:#2X}]"[2:] + ": ", end='')
 		ok, chk = mfc.uidIsValid(uid, bcc+i)
 		if ok is True:
-			log.say(f"{cGRN}Pass{cNORM}", prompt='')
+			log.say(f"{c.GRN}Pass{c.NORM}", prompt='')
 		else:
 			if chk < 0:
-				log.say("{cRED}Bad UID{cNORM}", prompt='')
+				log.say("{c.RED}Bad UID{c.NORM}", prompt='')
 			else:
-				log.say(f"{cRED}Fail{cNORM} (should be " + f"{chk:#2X})"[2:], prompt='')
+				log.say(f"{c.RED}Fail{c.NORM} (should be " + f"{chk:#2X})"[2:], prompt='')
 
 	# that's that demo done
 	del mfc
@@ -446,14 +491,14 @@ def  main ():
 	# Idenitfy the card (on the reader) from the manufacturing data
 	# we will ask for the FULL list of all matches (not just the first match)
 	# ...cos this is API demo/test code, and we'd probably like to spot any overlaps!
-	log.say(f"\n{onBLU}Try to identify the card...{cEOL}{cNORM}")
+	log.say(f"\n{c.onBLU}Try to identify the card...{c.EOL}{c.NORM}")
 
 	match = mfcIdentify(full=True)
 	if   len(match) == 0:
-		log.say(f"{cRED}No Chip Signature matches found{cNORM}")
+		log.say(f"{c.RED}No Chip Signature matches found{c.NORM}")
 
 	elif len(match) == 1:
-		log.say(f"Chip Signature matches: {cBGRN}{match[0][0]}{cNORM}")
+		log.say(f"Chip Signature matches: {c.BGRN}{match[0][0]}{c.NORM}")
 		myCard = match[0][1]()
 
 	else:
@@ -468,7 +513,7 @@ def  main ():
 	# show off the two dump functions
 	#   1. developers heirarchical data dump
 	#   2. user dnump
-	log.say(f"\n{onBLU}Demo the editing functions...{cEOL}{cNORM}")
+	log.say(f"\n{c.onBLU}Demo the editing functions...{c.EOL}{c.NORM}")
 
 	myCard = MFClassic(name="dumpdemo")  # start with a blank Card
 	myCard.addSec(2, 3)                  # add 2 Sectors, each containing 3 Blocks
@@ -499,7 +544,7 @@ def  main ():
 		dateStr = datetime.date.today().strftime("%Y-%m-%d")  # YYYY-MM-DD
 		myCard.sector(1).block(0).pokeT(10, dateStr)
 	except ValueError as e:
-		log.say(f"{cRED}Exception: {e}{cNORM}")
+		log.say(f"{c.RED}Exception: {e}{c.NORM}")
 
 	# there is also pokeX which marks a byte as None/Unknown
 	myCard.sector(1).block(0).pokeX(13, 2)  # set 2 bytes, starting with byte 13, to "unused"
@@ -514,53 +559,69 @@ def  main ():
 	log.say(myCard.block(3).history().replace("; ","\n"))
 
 	#-----------------------------------------------------
-	log.say(f"\n{onBLU}Developers dump (of [virtual] card)...{cEOL}{cNORM}")
+	log.say(f"\n{c.onBLU}Developers dump (of [virtual] card)...{c.EOL}{c.NORM}")
 # This generates an abusive amount of output, so it's commented out
 	log.say("[REDACTED]")
 #	dump(myCard)
 
 	#-----------------------------------------------------
-	log.say(f"\n{onBLU}User dump (of [virtual] card)...{cEOL}{cNORM}")
+	log.say(f"\n{c.onBLU}User dump (of [virtual] card)...{c.EOL}{c.NORM}")
 	log.say(myCard.show(hdr=True))
 
 	"""
 	#-----------------------------------------------------
 	# Let's try this for real
-	log.say(f"\n{onBLU}Let's try this for real...{cEOL}{cNORM}")
+	c.enable(True)  # enable coloured output
 
-	match = mfcIdentify()
+	log.say(f"\n{c.onBLU}Let's try this for real...{c.EOL}{c.NORM}")
+
+	#-----------------------------------------------------
+	log.say("Check for card : ", end='', flush=True)
+	if mfcChkCard() is False:
+		log.say(f"{c.RED}not found{c.NORM}", prompt='')
+		sys.exit(1)
+	else:
+		log.say(f"{c.GRN}Card detected{c.NORM}", prompt='')
+
+	#-----------------------------------------------------
+	bdKey, bdHole = mfcBackdoorKeys()
+	if bdKey != None:
+		log.say(f"Found backdoor key: {c.GRN}{bdHole}{c.NORM}/{c.BGRN}{bdKey}{c.NORM}")
+		key  = bdKey
+		hole = bdHole
+
+	else:
+		log.say(f"{c.RED}No working backdoor keys")
+
+		log.say("\nTry to guess one of the keys (for Nesting)...")
+		key, hole = mfcGuessKey()
+		if key != None:
+			log.say(f"Guessed a key: {c.GRN}{hole}{c.NORM}/{c.BGRN}{key}{c.NORM}")
+		else:
+			log.say(f"{c.RED}Failed to guess a key")
+			sys.exit(3)
+
+	#-----------------------------------------------------
+	match = mfcIdentify(bdHole, bdKey)
 	if   match is None or len(match) == 0:
-		log.say(f"{cRED}No Chip Signature matches found{cNORM}")
+		log.say(f"{c.RED}No Chip Signature matches found{c.NORM}")
 		sys.exit(1)
 
 	elif len(match) != 1:
 		names = []
 		names.append(m[0] for m in match)
-		log.say(f"{cRED}Problem: Multiple Chip Signatures match:{cNORM} {names}")
+		log.say(f"{c.RED}Problem: Multiple Chip Signatures match:{c.NORM} {names}")
 		sys.exit(2)
 
 	else:
-		log.say(f"Chip Signature matches: {cBGRN}{match[0][0]}{cNORM}")
+		log.say(f"Chip Signature matches: {c.BGRN}{match[0][0]}{c.NORM}")
 		myCard = match[0][1]()
 
-	bdKey, bdHole = mfcBackdoorKeys()
-	if bdKey != None:
-		log.say(f"Found backdoor key: {cGRN}{bdHole}{cNORM}/{cBGRN}{bdKey}{cNORM}")
-		key  = bdKey
-		hole = bdHole
-	else:
-		log.say(f"{cRED}No working backdoor keys")
-
-		log.say("\nTry to guess one of the keys (for Nesting)...")
-		key, hole = mfcGuessKey()
-		if key != None:
-			log.say(f"Guessed a key: {cGRN}{hole}{cNORM}/{cBGRN}{key}{cNORM}")
-		else:
-			log.say(f"{cRED}Failed to guess a key")
-			sys.exit(3)
-
+	log.say(f"Load all blocks...")
 	for b in myCard.blocks():
-		b.rdbl(b.blkN, hole=bdHole, key=bdKey)
+		b.rdbl(b.blkN, hole=bdHole, key=bdKey, end='')
+		log.say("\r", end='', prompt='')
+	log.say("\n")
 
 	log.say(myCard.show(hdr=True))
 

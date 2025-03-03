@@ -2,7 +2,7 @@ import pm3
 import json
 
 from new_log  import log
-from new_ansi import *
+from new_ansi import c
 
 #============================================================================== ========================================
 #                                                                                PM3 Preferences
@@ -25,12 +25,11 @@ def  getPref (pref):
 def  pm3Call (cmd,  end='\n',  quiet=False):
 	p = pm3.pm3()
 	if quiet is not True:
-		log.say(f"{cBMAG}`{cmd}`{cNORM}", end=end, flush=True)
+		log.say(f"{c.BMAG}`{cmd}`{c.NORM}", end=end, flush=True)
 	pRes = p.console(cmd)
 	pCap = p.grabbed_output
 	return pRes, pCap
 
 #+============================================================================= ========================================
-#def  pm3Test ():
-#	print("pm3   : ", end='')
-#	print(vars(log))
+def  pm3Test ():
+	print("in pm3: ", vars(log))
