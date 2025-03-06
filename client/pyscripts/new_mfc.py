@@ -25,7 +25,7 @@ class Key:
 # clear      | reset to empty card    | -                      | -               |
 # setup      | to be overridden       | -                      | -               |
 #            |                        |                        |                 |
-# get14a     | get {sak, atqa, prng}  | quiet                  | sak, atqa, prng |
+# getInfo    | get card info          | quiet, nack            | sak, atqa, prng, nonce, nack |
 # uid        | return card uid        | -                      | uid, bcc        |
 # uidIsValid | check uid/bcc          | uid, bcc               | T/F             |
 #            |                        |                        |                 |
@@ -75,20 +75,23 @@ class  MFClassic:
 			for s in self.sec:
 				s.clear()
 
-		self.note = []  # somewhere to take notes
+		self.note  = []  # somewhere to take notes
 
-		self.sak  = -1  # Select Acknowledge
-		self.atqa = []  # Answer To reQuest
-		self.ats  = []  #! Answer To Select (seemingly present on SOME applicable cards!)
-		self.prng = ""  # weak/hard/static/etc.
+		self.sak   = -1  # Select Acknowledge
+		self.atqa  = []  # Answer To reQuest
+		self.ats   = []  #! Answer To Select (seemingly present on SOME applicable cards!)
+		self.prng  = ""  # weak/hard/static/etc.
 
-		self.sCnt = 0   # total sector count
-		self.bCnt = 0   # total block count
+		self.nonce = ""  # static[+encrypted][+nested][:<N>]
+		self.nack  = ""  # nack bug description #!todo
 
-		self.sec  = []  # sequential and contiguous list of all sectors
-		self.blk  = []  # sequential and contiguous list of all blocks
+		self.sCnt  = 0   # total sector count
+		self.bCnt  = 0   # total block count
 
-		self.hist = ""  # command history
+		self.sec   = []  # sequential and contiguous list of all sectors
+		self.blk   = []  # sequential and contiguous list of all blocks
+
+		self.hist  = ""  # command history
 
 	#%+======================================================================== setup
 	# This Method MUST be overridden in the inheriting Class
@@ -97,10 +100,19 @@ class  MFClassic:
 	def  setup (self):
 		pass
 
-	#%+======================================================================== get14a
-	def  get14a (self, quiet=False):
-		self.sak, self.atqa, self.prng = mfcGet14a(quiet)
-		return (self.sak, self.atqa, self.prng)
+	#%+======================================================================== setInfo
+	def  setInfo (self, info):
+#		self.uid   = info['uid']
+		self.atqa  = info['atqa']
+		self.sak   = info['sak']
+		self.prng  = info['prng']
+		self.nonce = info['nonce']
+		self.nack  = info['nack']
+
+	#%+======================================================================== getInfo
+	def  getInfo (self, quiet=False, nack=False):
+		return {'uid':self.uid,    'atqa':self.atqa,    'sak':self.sak,
+		        'prng':self.prng,  'nonce':self.nonce,  'nack':self.nack}
 
 	#%+======================================================================== uid
 	# Returns a tuple of ([N]UID, BCC) [BCC == [N]UID Checksum]

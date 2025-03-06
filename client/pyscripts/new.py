@@ -44,6 +44,8 @@ from  new_pm3    import  *    # proxmark API
 from  new_mfc    import  *    # mfc classes & helper funtions
 from  new_cards  import  *    # known cards
 
+from fm11rf08s_recovery import recovery
+
 import  re                    # regex
 import  os                    # OS speific (eg. dir slash)
 import  sys                   # system API
@@ -164,33 +166,54 @@ def dump_ (obj,  iprev="|  ",  istr=""):
 #+============================================================================= ========================================
 #import re
 
-def  mfcGet14a (quiet=False,  end="\n"):
-	atqa = None
-	sak  = None
-	prng = None
+def  mfcGetInfo (nack=False, quiet=False,  end="\n"):
+	uid   = None
+	atqa  = None
+	sak   = None
+	prng  = None
+	nonce = ""
+	nval  = ""
+	nack  = None  #! todo
 
-	pRes, pCap = pm3Call("hf 14a info", quiet=quiet, end=end)
+	pRes, pCap = pm3Call("hf mf info", quiet=quiet, end=end)
 	if pRes != 0:
 		log.say("Read fail")
 	else:
 		for lin in pCap.split('\n'):
+			if uid == None:
+				r = r"UID: (.*)"
+				m = re.search(r, lin)
+				if m:  uid = m.group(1)
+
 			if atqa == None:
 				r = r"ATQA: (.. ..)"
 				m = re.search(r, lin)
 				if m:  atqa = m.group(1)
 
 			if sak == None:
-#				r = r"SAK: (.. \[.\])"
 				r = r"SAK: (..)"
 				m = re.search(r, lin)
 				if m:  sak = m.group(1)
 
 			if prng == None:
-				r = r"tion\.\.\.\.\.\.\. (.*)"
+				r = r"Prng\.* (.*)"
 				m = re.search(r, lin)
 				if m:  prng = m.group(1)
 
-	return (atqa, sak, prng)
+			# the nonce output is a right mish mash of randomness
+			if nonce == "":
+				if " nonce..." in lin:
+					if "........." in lin:
+						r = r"\.\.\.\. (.*)"
+						m = re.search(r, lin)
+						if m:  nval = m.group(1)
+					else:
+						nonce = "static"
+						if " enc "   in lin:  nonce += "+encrypted"
+						if " nested" in lin:  nonce += "+nested"
+						nonce += f":{nval}"
+
+	return {'uid':uid,  'atqa':atqa,  'sak':sak,  'prng':prng,  'nonce':nonce,  'nack':nack}
 
 #+============================================================================= ========================================
 def  mfcIdentify (hole,  key,  full=False,  quiet=False):
@@ -199,19 +222,21 @@ def  mfcIdentify (hole,  key,  full=False,  quiet=False):
 	blk0.rdbl(0, hole=hole, key=key, quiet=quiet, end='')
 	if not blk0.rdOK:
 		log.say(" - Failed to read Manufacturing Data (Block #0)", prompt='')
-		return None
+		return None, None
 	else:
 		log.say(f" : {blk0.hexP}", prompt='')
 
-	atqa, sak, prng = mfcGet14a(quiet=quiet, end='');
+	info = mfcGetInfo(quiet=quiet, end='');  # (atqa, sak, prng, nonce, nack)
+	sak  = info['sak']
 	vsak = blk0.hexC[5*2:(5+1)*2]
-	log.say (f" : ATQA={atqa} ; SAK={sak} ({vsak}) ; PRNG={prng}", prompt='')
+	log.say(f" : ATQA={info['atqa']} ; SAK={info['sak']} ({vsak}) ; " + 
+	        f"PRNG={info['prng']} ; nonce={info['nonce']}", prompt='')
 
 	if not quiet: log.say ("Checking database...")
 	match = []
 	for mfc in MFC_ALL:
 		cls = mfc()
-		nm = cls.__class__.__name__
+		nm  = cls.__class__.__name__
 		log.say(f"  {nm} ", end='')
 		if hasattr(cls, 'match'):
 			log.say(f"match ", end='', prompt='')
@@ -224,7 +249,7 @@ def  mfcIdentify (hole,  key,  full=False,  quiet=False):
 		else:
 			log.say(f" nomatch", prompt='')
 
-	return match
+	return info, match
 
 #+============================================================================= ========================================
 def  mfcGuessKey (card=None,  blk=None,  klist=None):
@@ -402,6 +427,59 @@ def  mfcBackdoorKeys (quiet=False):
 def  mfcChkCard ():
 	res, cap = pm3Call("hf mf rdbl --blk 0", quiet=True)
 	return True if ((res is True) or ("Can't select card" not in cap)) else False
+
+#+============================================================================= ========================================
+def  mfcLoadBackdoor (card, hole, key):
+	if   card.size == 4096:  sz = "--4k"
+#	elif card.size == 2048:  sz = "--2k"    #! no test data/cards
+	elif card.size == 1024:  sz = "--1k"
+#	elif card.size ==  320:  sz = "--mini"  #! no test data/cards
+	else                  :  return False, f"{c.RED}Unknown Card size{c.NORM}"
+
+	#! add retry loop
+	cmd      = f"hf mf ecfill -c {hole} --key {key} {sz}"  # `ecfill` seems to return -21 for fail
+	res, cap = pm3Call(cmd)
+	if res < 0:  return False, f"{c.RED}ecfill failed{c.NORM}"
+
+	#! add retry loop
+	cmd      = f"hf mf eview {sz}"
+	res, cap = pm3Call(cmd)
+	if res < 0:  return False, f"{c.RED}eview failed{c.NORM}"
+
+	"""
+[=] -----+-----+-------------------------------------------------+-----------------
+[=]  sec | blk | data                                            | ascii
+[=] -----+-----+-------------------------------------------------+-----------------
+[=]    0 |   0 | B9 56 20 34 FB 08 04 00 01 F2 C7 DA 56 F3 27 1D | .V 4........V.'.
+[=]      |   1 | 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 | ................
+[=]      |   2 | 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 | ................
+[=]      |   3 | 00 00 00 00 00 00 FF 07 80 69 00 00 00 00 00 00 | .........i......
+[=]    1 |   4 | 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 | ................
+           |||   |                                             |
+   11,12,13^^^   ^17                                           ^63  #**
+	"""
+	for lin in cap.split('\n'):
+		if (" | " in lin) and (lin[63] != " "):  #** data ilne
+			hexP = lin[17:63+1]                  #** data
+
+			blkN          = int(lin[11:14+1])    #** 3 digit block no.
+			blk           = card.block(blkN)
+			trl, sec, idx = blk.isTrailer()
+
+			blk.hole = hole
+			blk.keyH = key
+			blk.rdOK = True
+			blk.tryN = 1
+
+			blk.poke(0, hexP)  # this will flag up an edit
+			blk.edit = False   # reset the edit flag to "fresh read"
+
+			# backdoor keys do not retrieve other keys - this will set edit to True
+			if trl is True:
+				blk.pokeX(0, 6)   # keyA
+				blk.pokeX(10, 6)  # keyB
+
+	return True, "ok"
 
 #++============================================================================ ========================================
 def  main ():
@@ -598,17 +676,22 @@ def  main ():
 		log.say(f"{c.RED}No working backdoor keys")
 
 	#-----------------------------------------------------
-	# just backdfoor for now
+	# did we get a backdoor key?
 	if bdKey == None:
+		#! try and guess a key for block #0
 		log.say("just doing backdoor keys at this point!")
 		sys.exit(99)
 
+	hole = bdHole
+	key  = bdKey
+
 	#-----------------------------------------------------
+	# identify card type, and create a virtual one of those
 	log.say(f"Identify card type...")
 
 	# mfcIdentify() requires the data from the manufacturing block
 	# so we NEED a valid key for it
-	match = mfcIdentify(bdHole, bdKey)
+	info, match = mfcIdentify(hole, key)
 	if match is None or len(match) == 0:
 		log.say(f"{c.RED}No Chip Signature matches found{c.NORM}")
 		sys.exit(1)
@@ -623,50 +706,99 @@ def  main ():
 		log.say(f"Chip Signature matches: {c.BGRN}{match[0][0]}{c.NORM}")
 		myCard = match[0][1]()
 
+	print(info)
+	myCard.setInfo(info)
+
+	# convert card size to PM3 CLI switch value
+	if   myCard.size == 4096:  sz = "--4k"
+	elif myCard.size == 2048:  sz = "--2k"    #! no test data/cards
+	elif myCard.size == 1024:  sz = "--1k"
+	elif myCard.size ==  320:  sz = "--mini"  #! no test data/cards
+	else                    :  return False, f"{c.RED}Unknown Card size{c.NORM}"
+
 	#-----------------------------------------------------
-	# backdoor method ... load data with ecfill
 	log.say(f"Load all data...")
 
-	if   myCard.size == 4096:  sz = "--4k"
-#	elif myCard.size == 2048:  sz = "--2k"    #! no test data/cards
-	elif myCard.size == 1024:  sz = "--1k"
-#	elif myCard.size ==  320:  sz = "--mini"  #! no test data/cards
-	else:
-		log.say(f"{c.RED}Unknown Card size{c.NORM}")
-		sys.exit(7)
+	if bdKey != None:
+		# backdoor method ... load data with ecfill
+		res, err = mfcLoadBackdoor(myCard, bdHole, bdKey)
+		if res is False:
+			log.say(f"{c.RED}Load Failed{c.NORM} : {err}")
+			sys.exit(22)
 
-	cmd = f"hf mf ecfill -c {bdHole} --key {bdKey} {sz}"
-	res, cap = pm3Call(cmd)
-	if res < 0:  # seems to return -21 for fail
-		log.say(f"{c.RED}ecfill failed{c.NORM}")
-		sys.exit(7)
+		if "static+encrypted" in myCard.nonce:
+#			do_recover()
+			# test keys for development : "nova-1"
+			# recovery() does NOT verify these keys
+			keys = [ \
+				["", "B578F38A5C61"], ["8C0C5D149C0C", "E015CEE2380A"], \
+				["A0A1A2A3A4A5", "0000014B5C31"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], \
+				["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], \
+				["FFFFFFFFFFFF", "96A301BCE267"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], \
+				["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], \
+				["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], \
+				["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], \
+				["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"]  \
+			]
+#			keys = []
 
-	cmd = f"hf mf eview {sz}"
-	res, cap = pm3Call(cmd)
-	if res < 0:
-		log.say(f"{c.RED}eview failed{c.NORM}")
-		sys.exit(7)
+			# recovery() does NOT verify these keys
+			for k in keys:
+				for ab in [0, 1]:
+					# try using the key - if it fails, blank it!
+					pass
 
-	for lin in cap.split('\n'):
-		if (" | " in lin) and (lin[56] != " "):
-			hexP = lin[17:64]
+			log.say(f"\n{c.BYEL}" + "\u2588" + ("\u2580" *77) + "\u2588" + f"{c.NORM}")
+			log.say(f"{c.BMAG}¬`script fm11rf08s_recovery.py`{c.NORM}")
+			r = recovery(quiet=False, keyset=keys)
+			log.say(f"{c.BYEL}" + "\u2588" + ("\u2584" *77) + "\u2588" + f"{c.NORM}\n")
 
-			blkN = int(lin[11:15])
-			blk = myCard.block(blkN)
-			trl, sec, idx = blk.isTrailer()
+#			keyfile = r['keyfile']
+			rkey    = r['found_keys']
+#			fdump   = r['dumpfile']
+#			rdata   = r['data']
 
-			blk.hole = bdHole
-			blk.keyH = bdKey
-			blk.rdOK = True
-			blk.tryN = 1
+			badrk = 0     # 'bad recovered key' count (ie. not recovered)
 
-			blk.poke(0, hexP)  # this will flag up an edit
-			blk.edit = False   # reset the edit flag to "fresh read"
+			print(rkey)
+			#! todo: does recovery() ALWAYS return keys for {0..15, 32}[17] sectors ??
+			for k in range(0, (15+1)+1):
+				for ab in [0, 1]:
+					if rkey[k][ab] == "":
+						if badrk == 0:  log.say("Some keys were not recovered: ", end='')
+						else:           log.say(", ", end='', prompt='')
+						badrk += 1
 
-			# backdoor keys do not retrieve other keys - this will set edit to True
-			if trl is True:
-				blk.pokeX(0, 6)   # keyA
-				blk.pokeX(10, 6)  # KeyB
+						kn = k
+						if kn > 15:  kn += 16
+						log.say(f"[{kn}/", end='', prompt='')
+						log.say("A]" if ab == 0 else "B]", end='', prompt='')
+
+					else:
+						sec  = k   if k <  16 else k+16
+						hole = "A" if ab == 0 else "B"
+						myCard.secKeySet(sec, hole, rkey[k][ab])
+
+			if badrk > 0:  log.say("", prompt='')
+
+		else:
+#			do_autopwn(myCard, sz)
+			cmd = f"hf mf autopwn {sz}"
+#			cmd += " -a --key FFFFFFFFFFFF"  # add a known key
+			res, cap = pm3Call(cmd, noisy=True)
+
+			reM = r".*sector.*valid key.*"
+			reS = r".*sector *([0-9]*) key type (.).*\[ (.{12}).*"
+			for lin in cap.split('\n'):
+				if re.match(reM, lin) is not None:
+					m = re.search(reS, lin)
+					sec  = int(m.group(1))
+					hole = Key.A if m.group(2) == "A" else Key.B
+					key  = m.group(3)
+					myCard.secKeySet(sec, hole, key)
+
+
+
 
 	#-----------------------------------------------------
 	# backdoor key does not get keys A/B
@@ -675,6 +807,19 @@ def  main ():
 #	if "Static enc nonce"
 #		r = recovery(quiet=False, keyset=keys)
 	"""
+nova-1
+[=] Sector  0 keyA = A0A1A2A3A4A5
+[=] Sector  0 keyB = B578F38A5C61
+[=] Sector  1 keyB = E015CEE2380A
+[=] Sector  1 keyA = 8C0C5D149C0C
+[=] Sector  2 keyA = A0A1A2A3A4A5
+[=] Sector  2 keyB = 0000014B5C31
+[=] Sector  3 keyA = FFFFFFFFFFFF
+[=] Sector  3 keyB = FFFFFFFFFFFF
+[=] Sector  4 keyA = FFFFFFFFFFFF
+[=] Sector  4 keyB = FFFFFFFFFFFF
+[=] Sector  5 keyA = FFFFFFFFFFFF
+[=] Sector  5 keyB = FFFFFFFFFFFF
 [=] Sector  6 keyA = FFFFFFFFFFFF
 [=] Sector  6 keyB = 96A301BCE267
 [=] Sector  7 keyA = FFFFFFFFFFFF
@@ -686,14 +831,29 @@ def  main ():
 [=] Sector 10 keyA = FFFFFFFFFFFF
 [=] Sector 10 keyB = FFFFFFFFFFFF
 [=] Sector 11 keyA = FFFFFFFFFFFF
-
+[=] Sector 11 keyB = FFFFFFFFFFFF
+[=] Sector 12 keyA = FFFFFFFFFFFF
+[=] Sector 12 keyB = FFFFFFFFFFFF
+[=] Sector 13 keyA = FFFFFFFFFFFF
+[=] Sector 13 keyB = FFFFFFFFFFFF
 [=] Sector 14 keyA = FFFFFFFFFFFF
 [=] Sector 14 keyB = FFFFFFFFFFFF
 [=] Sector 15 keyA = FFFFFFFFFFFF
 [=] Sector 15 keyB = FFFFFFFFFFFF
 [=] Sector 32 keyB = 00001FEEF30E
 [=] Sector 32 keyA = 2ACC3DA8E7DB
-[=]
+
+
+[ ["A0A1A2A3A4A5", "B578F38A5C61"], ["8C0C5D149C0C", "E015CEE2380A"],
+  ["A0A1A2A3A4A5", "0000014B5C31"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"],
+  ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"],
+  ["FFFFFFFFFFFF", "96A301BCE267"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"],
+  ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"],
+  ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"],
+  ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"],
+  ["FFFFFFFFFFFF", "FFFFFFFFFFFF"], ["FFFFFFFFFFFF", "FFFFFFFFFFFF"] ]
+
+['A0A1A2A3A4A5', 'B578F38A5C61', 'E015CEE2380A', '8C0C5D149C0C', 'A0A1A2A3A4A5', '0000014B5C31', '96A301BCE267', '00001FEEF30E', '2ACC3DA8E7DB']
 
 [+] -----+-----+--------------+---+--------------+----
 [+]  Sec | Blk | key A        |res| key B        |res
@@ -745,21 +905,11 @@ def  main ():
 	"""
 #	else:
 
-	cmd = f"hf mf autopwn {sz}"
-#	cmd += " -a --key FFFFFFFFFFFF"  # add a known key
-	res, cap = pm3Call(cmd, noisy=True)
 
-	reM = r".*sector.*valid key.*"
-	reS = r".*sector *([0-9]*) key type (.).*\[ (.{12}).*"
-	for lin in cap.split('\n'):
-		if re.match(reM, lin) is not None:
-			m = re.search(reS, lin)
-			sec  = int(m.group(1))
-			hole = Key.A if m.group(2) == "A" else Key.B
-			key  = m.group(3)
-			myCard.secKeySet(sec, hole, key)
 
 	log.say(myCard.show(hdr=True))
+
+#	dumpCard(myCard)
 
 	sys.exit(99)
 
