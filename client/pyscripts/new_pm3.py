@@ -22,11 +22,17 @@ def  getPref (pref):
 #+============================================================================= ========================================
 #                                                                                PM3 CLI Interface
 #============================================================================== ========================================
-def  pm3Call (cmd,  end='\n',  quiet=False):
+def  pm3Call (cmd,  end='\n',  quiet=False,  noisy=False):
 	p = pm3.pm3()
-	if quiet is not True:
-		log.say(f"{c.BMAG}`{cmd}`{c.NORM}", end=end, flush=True)
-	pRes = p.console(cmd)
+
+	if noisy is True:      log.say(f"\n{c.BYEL}" + "\u2588" + ("\u2580" *77) + "\u2588" + f"{c.NORM}")
+
+	if quiet is not True:  log.say(f"{c.BMAG}`{cmd}`{c.NORM}", end=end, flush=True)
+
+	pRes = p.console(cmd, quiet=not noisy)
+
+	if noisy is True:      log.say(f"{c.BYEL}" + "\u2588" + ("\u2584" *77) + "\u2588" + f"{c.NORM}\n")
+
 	pCap = p.grabbed_output
 	return pRes, pCap
 

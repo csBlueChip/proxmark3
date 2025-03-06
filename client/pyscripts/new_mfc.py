@@ -341,22 +341,19 @@ class  MFClassic:
 		sec = self.sector(n)
 		if sec is None:  return None
 
-		lstB, txt = valxToList(acl)
-		if lstB is None:  return None
-
 		blk = sec.trailer()
 		if blk is None:  return None
 
-		if ab == KeyA:
+		if ab == Key.A:
 			keyX = "KeyA"
 			offs = 0
 
-		elif ab == KeyB:
+		elif ab == Key.B:
 			keyX = "KeyB"
 			offs = 10
 
 		if (blk.lenB < offs+6):  return None
-		if not blk.poke(offs, lstB, 6):  return None
+		if not blk.poke(offs, key, 6):  return None
 
 		self.addHist("secKeySet({n},{keyX},{txt})")
 		sec.addHist("_aclSet({keyX},{txt})")
@@ -439,16 +436,16 @@ class Sector:
 	# (Re)initialise a Sector (to be empty)
 	# This will also clear all the Blocks in the Sector
 	#
-	def  clear (self):
+	def  clear (self, secN=-1):
 		if 'self.blk' in locals():  # will not exist on first call
 			for b in self.blk:
-				b.clear()
+				b.clear(b.blkN)
 
-		self.secN = -1  # sector number
-		self.bCnt = 0   # block count
-		self.blk  = []  # list of blocks {0..bCnt}
+		self.secN = secN  # sector number
+		self.bCnt = 0     # block count
+		self.blk  = []    # list of blocks {0..bCnt}
 
-		self.hist = ""  # edit history
+		self.hist = ""    # edit history
 
 	#%+======================================================================== addHist
 	# Add "cmd" to Card history log
@@ -506,8 +503,8 @@ class Sector:
 	#      I think it's just a byte of user data that nobody ever seems to use!
 	#
 	def  trailer (self):
-		if (self.blkCnt < 1):  return None
-		return self.blk[self.blkCnt -1]
+		if (self.blkCnt() < 1):  return None
+		return self.blk[self.blkCnt() -1]
 
 	#%+======================================================================== acl
 	# Return the ACL bits for this Sector - as an unpadded Hex String
@@ -580,51 +577,36 @@ class Sector:
 #%============================================================================= ========================================
 # A Block has Bytes                                                              Block
 #                                                                               ========================================
-# __init__ | constructor          | -                   | -          |
-# clear    | reset block          | -                   | -          |
-# blank    | reset & pad          | n                   | -          |
-#          |                      |                     |            |
-# addHist  | add to history       | cmd                 | history    |
-# history  | return history       | -                   | history    |
-#          |                      |                     |            |
-# rdbl     | read block           | n, hole, key,       |            |
-#          |                      |   retry, end, quiet | T/F        |
-#          |                      |                     |            |
-# __poke   | -private-            | *magic*             | exception? |
-# poke     | poke value to block  | offs, val, limit    | T/F        |
-# pokeT    | poke text to block   | offs, s, limit      | T/F        |
-# pokeX    | poke blanks to block | offs, cnt           | -          |
-#          |                      |                     |            |
-# show     | userfriendly dump    | -                   | text       |
+# __init__  | constructor           | -                   | -          |
+# clear     | reset block           | -                   | -          |
+# blank     | reset & pad           | n                   | -          |
+#           |                       |                     |            |
+# addHist   | add to history        | cmd                 | history    |
+# history   | return history        | -                   | history    |
+#           |                       |                     |            |
+# rdbl      | read block            | n, hole, key,       |            |
+#           |                       |   retry, end, quiet | T/F        |
+#           |                       |                     |            |
+# __poke    | -private-             |  *magic*            | exception? |
+# poke      | poke value to block   | offs, val, limit    | T/F        |
+# pokeT     | poke text to block    |  offs, s, limit     | T/F        |
+# pokeX     | poke blanks to block  | offs, cnt           | -          |
+#           |                       |                     |            |
+# isTrailer | last block in sector? | -                   | T/F        |
+# show      | userfriendly dump     | -                   | text       |
 #
 #============================================================================== ========================================
 class Block:
-	def  __init__ (self,  bytes=0,  parent=None):
+	def  __init__ (self,  bytes=0,  parent=None,  blkN=-1):
 		self.__parent = parent
 
-		self.clear()
-		if bytes > 0:  self.blank(bytes)
+		self.clear(blkN, bytes)
 
 	#+========================================================================= clear
 	# (Re)initialise a Block (to be empty)
 	#
-	def  clear (self):
-		self.edit = None   # True/False/None => Edited/Read/Empty
-
-		self.blkN = -1     # block number
-		self.hole = -1     # keyhole (used to read block)
-		self.keyH = ""     # hex key (used to read block)
-
-		self.lenB = 0      # byte count
-		self.text = ""     # ascii text     "XYZ."
-
-		self.hexP = ""     # hex padded     "58 59 5A FF"
-		self.hexC = ""     # hex condensed  "58595AFF"
-		self.mask = 0      # bit 2^n indicates that hexB[n] is valid
-		self.hexB = []     # hex bytes      b'\x58\x59\x5A\xFF'
-
-		self.rdOK = False  # block was successfully read from card (not created by hand)
-		self.tryN = 0      # read attempts >= 1 [only valid is rdOK==Tue]
+	def  clear (self,  blkN=-1,  bytes=-1):
+		self.blkN = blkN   # block number
 
 		self.nulV = 0x00   # value      given to null byte
 		self.nulH = "--"   # hex string given to null byte
@@ -633,21 +615,38 @@ class Block:
 
 		self.hist = ""     # rdbl() read command (`hf mf rdbl...`)
 
+		self.blank_i(bytes)
+
 	#+========================================================================= blank
 	# Reinitialise a Block AND put 'n' bytes of placeholder ("--") data in it
 	#
-	def  blank (self,  n=16):
-		self.clear()
+	def  blank (self,  bytes=16):
+		self.blank_i(bytes)
+		self.addHist(f"blank({bytes})")
 
-		self.lenB = n
+	#+========================================================================= blank_i
+	def  blank_i (self,  bytes=16):
+		self.hole = -1     # keyhole (used to read block)
+		self.keyH = ""     # hex key (used to read block)
 
-		self.hexP = " ".join([self.nulH] *n)  # hex padded     "-- -- -- --"
-		self.hexC =  self.nulH  * n           # hex condensed  "--------"
-		self.hexB = [self.nulV] * n           # hex bytes
-		self.text =  self.nulC  * n           # ascii text
+		self.rdOK = False  # block was successfully read from card (not created by hand)
+		self.tryN = 0      # read attempts >= 1 [only valid is rdOK==Tue]
+		self.edit = None   # True/False/None => Edited/Read/Empty
 
-		self.addHist(f"blank({n})")
-		self.edit = None
+		self.lenB = bytes  # byte count
+		self.mask = 0      # bit 2^n indicates that hexB[n] is valid
+
+		if self.lenB <= 0:
+			self.hexP = ""     # hex padded     "58 59 5A FF"
+			self.hexC = ""     # hex condensed  "58595AFF"
+			self.hexB = []     # hex bytes      b'\x58\x59\x5A\xFF'
+			self.text = ""     # ascii text     "XYZ."
+
+		else: #! will this work for 0 ??
+			self.hexP = " ".join([self.nulH] *bytes)  # hex padded     "-- -- -- --"
+			self.hexC =  self.nulH  * bytes           # hex condensed  "--------"
+			self.hexB = [self.nulV] * bytes           # hex bytes
+			self.text =  self.nulC  * bytes           # ascii text
 
 #	#+=========================================================================
 #	def  to_dict (self):
@@ -680,9 +679,7 @@ class Block:
 	# The data from the read is parsed in to the Class
 	#
 	def  rdbl (self,  n=-1,  hole=None,  key="",  retry=3,  end='\n',  quiet=False):
-		tmp = self.blkN
-		self.clear()
-		self.blkN = tmp
+		self.blank_i(self.lenB)
 
 		# build the PM3 command
 		cmd = f"hf mf rdbl"
@@ -739,7 +736,7 @@ class Block:
 			raise ValueError("buffer overflow")
 
 		# we don't want to mark a block as dirty unless we need to
-		if (self.hexB[idx] == val):  return
+		if (self.mask & 1<<idx) and (self.hexB[idx] == val):  return
 
 		valIn = val
 
@@ -750,7 +747,7 @@ class Block:
 			self.mask &= ~(1 << idx)
 
 		else:
-			hh = hex(val)[2:].upper()
+			hh = hex(val)[2:].upper().zfill(2)
 			ch = chr(val) if 32 <= val <= 126 else self.notA
 			self.mask |= (1 << idx)
 
@@ -820,6 +817,17 @@ class Block:
 		for i in range(offs, offs+cnt):
 			self.__poke(i, self.nulH)
 
+	#+========================================================================= isTrailer
+	def  isTrailer (self):
+		if self.__parent is not None:
+			sec = self.__parent.secN
+			idx = self.blkN - self.__parent.blk[0].blkN
+			if idx == self.__parent.bCnt -1:
+				return True, sec, idx
+			else:
+				return False, sec, idx
+		return False, -1, -1
+
 	#+========================================================================= show
 	# For now I am going to assume that every block is 16 bytes
 	# I have plenty of ideas if this turns out to be a bad assumption
@@ -842,14 +850,6 @@ class Block:
 	def  show (self, hdr=False, ascii=True, sep="."):
 		out = ""
 
-#		if hdr is True:
-#			if ascii is True:
-#				out += f"| {c.BBLU}Sector{c.NORM}:{c.BGRN}Blk{c.NORM} |{c.MAG}ACL{c.NORM}| {c.WHT}00 01 02 03 {c.BWHT}04 05 06 07 {c.WHT}08 09 10 11 {c.BWHT}12 13 14 15{c.NORM} | ASCII               |\n"
-#				out += f"|------------|---|-------------------------------------------------|-----.----.----.-----|\n"
-#			else:
-#				out += f"| {c.BBLU}Sector{c.NORM}:{c.BGRN}Blk{c.NORM} |{c.MAG}ACL{c.NORM}| {c.WHT}00 01 02 03 {c.BWHT}04 05 06 07 {c.WHT}08 09 10 11 {c.BWHT}12 13 14 15{c.NORM} |\n"
-#				out += f"|------------|---|-------------------------------------------------|\n"
-
 		if hdr is True:
 			out += f"| {c.BBLU}Sector{c.NORM}:{c.BGRN}Blk{c.NORM} |{c.MAG}ACL{c.NORM}| {c.WHT}00 01 02 03 {c.BWHT}04 05 06 07 {c.WHT}08 09 10 11 {c.BWHT}12 13 14 15{c.NORM} |"
 			if ascii is True:  out += " ASCII               |"
@@ -860,17 +860,9 @@ class Block:
 			out += "\n"
 
 		# sector
-		trl = False  # trailer block
-		if self.__parent is not None:
-			sec = self.__parent.secN
-			idx = self.blkN - self.__parent.blk[0].blkN
-			if idx == self.__parent.bCnt -1:
-				trl = True
-			tmp = f"{c.BBLU}{sec:#2d}[{idx:#2d}]"
-		else:
-			tmp = "{c.BBLU}  [  ]"
-		# +block
-		out += "| " + tmp + f"{c.NORM}:{c.BGRN}{self.blkN:#3d}{c.NORM} |"
+		trl, sec, idx = self.isTrailer()
+#		tmp = f"{c.BBLU}{sec:#2d}[{idx:#2d}]"
+		out += "| " + f"{c.BBLU}{sec:#2d}[{idx:#2d}]" + f"{c.NORM}:{c.BGRN}{self.blkN:#3d}{c.NORM} |"
 
 		# acl
 		out += f"{c.MAG} ? {c.NORM}| "

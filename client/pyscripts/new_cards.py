@@ -3,10 +3,11 @@
 from new_mfc import *
 
 #%%============================================================================ ========================================
-# 1K as 16*4*16                                                                  MFClassic( MFC_1k )
+# 1K as 16*4*16                                                                  MFClassic( MFC_1K )
 #============================================================================== ========================================
 class  MFC_1K(MFClassic):
 	def  __init__ (self,  name="Data",  chip="1K",  desc=""):
+		self.size = 1024
 		super().__init__(chip=chip, name=name)
 
 	#%+======================================================================== setup
@@ -15,10 +16,11 @@ class  MFC_1K(MFClassic):
 		self.addSec(sectors=16, blocks=4, bytes=16)
 
 #%%============================================================================ ========================================
-# 4K as 64*4*16 (SAK=20)                                                         MFClassic( MFC_4k_64 )
+# 4K as 64*4*16 (SAK=20)                                                         MFClassic( MFC_4K_64 )
 #============================================================================== ========================================
 class  MFC_4K_64(MFClassic):
 	def  __init__ (self,  name="Data",  chip="4K/64",  desc=""):
+		self.size = 4096
 		super().__init__(chip=chip, name=name)
 
 	#%+======================================================================== setup
@@ -28,10 +30,11 @@ class  MFC_4K_64(MFClassic):
 		self.addSec(sectors=64, blocks=4, bytes=16)
 
 #%%============================================================================ ========================================
-# 4K as 32*4*16 + 8*16*16  (SAK=18)                                              MFClassic( MFC_4k_40 )
+# 4K as 32*4*16 + 8*16*16  (SAK=18)                                              MFClassic( MFC_4K_40 )
 #============================================================================== ========================================
 class  MFC_4K_40(MFClassic):
 	def  __init__ (self,  name="Data",  chip="4K/40",  desc=""):
+		self.size = 4096
 		super().__init__(chip=chip, name=name)
 
 	#%+======================================================================== setup
@@ -99,7 +102,7 @@ class  MFC_DEMO(MFClassic):
 	#
 #	def  sector (self,  n):
 # Eg. This is the FM11RF08S sector() code
-#		super().sector(n if 0 <= n <= 15 else (n-16))
+#		return super().sector(n if 0 <= n <= 15 else (n-16))
 
 	#%+======================================================================== block
 	# IF your Blocks ARE numbered contiguously,
@@ -115,7 +118,7 @@ class  MFC_DEMO(MFClassic):
 	#
 #	def  block (self,  n):
 # Eg. This is the FM11RF08S block() code
-#		super().block(n if 0 <= n <= 63 else (n-64))
+#		return super().block(n if 0 <= n <= 63 else (n-64))
 
 #%%============================================================================ ========================================
 # FM11RF08 : A 1K MiFare Classic Card with a backdoor key                        MFC_1K( MFC_FM11RF08 )
@@ -240,12 +243,12 @@ class  MFC_FM11RF08S(MFC_1K):
 	#%+======================================================================== sector
 	def  sector (self,  n):
 		# map from card_number to array_entry
-		super().sector(n if 0 <= n <= 15 else (n-16))
+		return super().sector(n if 0 <= n <= 15 else (n-16))
 
 	#%+======================================================================== block
 	def  block (self,  n):
 		# map from card_number to array_entry
-		super().block(n if 0 <= n <= 63 else (n-64))
+		return super().block(n if 0 <= n <= 63 else (n-64))
 
 #%%============================================================================ ========================================
 # FM11RF32N/20 : A 4K card with consistent sector sizes                          MFC_4K_64( MFC_FM11RF32N_20 )

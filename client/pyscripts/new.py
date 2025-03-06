@@ -36,21 +36,23 @@ dirty/clean edit state needs to ripple up
 # ------------------------------------------------------------------------------
 # Imports
 #
-from new_ansi  import c    # colour
-from new_log   import log  # logging
-from new_pm3   import *    # proxmark API
-from new_mfc   import *    # mfc classes & helper funtions
-from new_cards import *    # known cards
+#import  pm3
 
-import re                  # regex
-import os                  # OS speific (eg. dir slash)
-import sys                 # system API
-import argparse            # CLI argument parser
-import datetime            # date & time processing
+from  new_ansi   import  c    # colour
+from  new_log    import  log  # logging
+from  new_pm3    import  *    # proxmark API
+from  new_mfc    import  *    # mfc classes & helper funtions
+from  new_cards  import  *    # known cards
 
-#import struct              # C struct data
-#import json                # JSON processor
-#import gc                  # Garbage Collector
+import  re                    # regex
+import  os                    # OS speific (eg. dir slash)
+import  sys                   # system API
+import  argparse              # CLI argument parser
+import  datetime              # date & time processing
+
+#import  struct                # C struct data
+#import  json                  # JSON processor
+#import  gc                    # Garbage Collector
 
 #+============================================================================= ========================================
 # Parse the CLi argument
@@ -576,6 +578,7 @@ def  main ():
 	log.say(f"\n{c.onBLU}Let's try this for real...{c.EOL}{c.NORM}")
 
 	#-----------------------------------------------------
+	# check card present
 	log.say("Check for card : ", end='', flush=True)
 	if mfcChkCard() is False:
 		log.say(f"{c.RED}not found{c.NORM}", prompt='')
@@ -584,6 +587,7 @@ def  main ():
 		log.say(f"{c.GRN}Card detected{c.NORM}", prompt='')
 
 	#-----------------------------------------------------
+	# check for backdoor keys
 	bdKey, bdHole = mfcBackdoorKeys()
 	if bdKey != None:
 		log.say(f"Found backdoor key: {c.GRN}{bdHole}{c.NORM}/{c.BGRN}{bdKey}{c.NORM}")
@@ -593,17 +597,19 @@ def  main ():
 	else:
 		log.say(f"{c.RED}No working backdoor keys")
 
-		log.say("\nTry to guess one of the keys (for Nesting)...")
-		key, hole = mfcGuessKey()
-		if key != None:
-			log.say(f"Guessed a key: {c.GRN}{hole}{c.NORM}/{c.BGRN}{key}{c.NORM}")
-		else:
-			log.say(f"{c.RED}Failed to guess a key")
-			sys.exit(3)
+	#-----------------------------------------------------
+	# just backdfoor for now
+	if bdKey == None:
+		log.say("just doing backdoor keys at this point!")
+		sys.exit(99)
 
 	#-----------------------------------------------------
+	log.say(f"Identify card type...")
+
+	# mfcIdentify() requires the data from the manufacturing block
+	# so we NEED a valid key for it
 	match = mfcIdentify(bdHole, bdKey)
-	if   match is None or len(match) == 0:
+	if match is None or len(match) == 0:
 		log.say(f"{c.RED}No Chip Signature matches found{c.NORM}")
 		sys.exit(1)
 
@@ -617,11 +623,165 @@ def  main ():
 		log.say(f"Chip Signature matches: {c.BGRN}{match[0][0]}{c.NORM}")
 		myCard = match[0][1]()
 
+	#-----------------------------------------------------
+	# backdoor method ... load data with ecfill
+	log.say(f"Load all data...")
+
+	if   myCard.size == 4096:  sz = "--4k"
+#	elif myCard.size == 2048:  sz = "--2k"    #! no test data/cards
+	elif myCard.size == 1024:  sz = "--1k"
+#	elif myCard.size ==  320:  sz = "--mini"  #! no test data/cards
+	else:
+		log.say(f"{c.RED}Unknown Card size{c.NORM}")
+		sys.exit(7)
+
+	cmd = f"hf mf ecfill -c {bdHole} --key {bdKey} {sz}"
+	res, cap = pm3Call(cmd)
+	if res < 0:  # seems to return -21 for fail
+		log.say(f"{c.RED}ecfill failed{c.NORM}")
+		sys.exit(7)
+
+	cmd = f"hf mf eview {sz}"
+	res, cap = pm3Call(cmd)
+	if res < 0:
+		log.say(f"{c.RED}eview failed{c.NORM}")
+		sys.exit(7)
+
+	for lin in cap.split('\n'):
+		if (" | " in lin) and (lin[56] != " "):
+			hexP = lin[17:64]
+
+			blkN = int(lin[11:15])
+			blk = myCard.block(blkN)
+			trl, sec, idx = blk.isTrailer()
+
+			blk.hole = bdHole
+			blk.keyH = bdKey
+			blk.rdOK = True
+			blk.tryN = 1
+
+			blk.poke(0, hexP)  # this will flag up an edit
+			blk.edit = False   # reset the edit flag to "fresh read"
+
+			# backdoor keys do not retrieve other keys - this will set edit to True
+			if trl is True:
+				blk.pokeX(0, 6)   # keyA
+				blk.pokeX(10, 6)  # KeyB
+
+	#-----------------------------------------------------
+	# backdoor key does not get keys A/B
+	# use autopwn to find the keys
+
+#	if "Static enc nonce"
+#		r = recovery(quiet=False, keyset=keys)
+	"""
+[=] Sector  6 keyA = FFFFFFFFFFFF
+[=] Sector  6 keyB = 96A301BCE267
+[=] Sector  7 keyA = FFFFFFFFFFFF
+[=] Sector  7 keyB = FFFFFFFFFFFF
+[=] Sector  8 keyA = FFFFFFFFFFFF
+[=] Sector  8 keyB = FFFFFFFFFFFF
+[=] Sector  9 keyA = FFFFFFFFFFFF
+[=] Sector  9 keyB = FFFFFFFFFFFF
+[=] Sector 10 keyA = FFFFFFFFFFFF
+[=] Sector 10 keyB = FFFFFFFFFFFF
+[=] Sector 11 keyA = FFFFFFFFFFFF
+
+[=] Sector 14 keyA = FFFFFFFFFFFF
+[=] Sector 14 keyB = FFFFFFFFFFFF
+[=] Sector 15 keyA = FFFFFFFFFFFF
+[=] Sector 15 keyB = FFFFFFFFFFFF
+[=] Sector 32 keyB = 00001FEEF30E
+[=] Sector 32 keyA = 2ACC3DA8E7DB
+[=]
+
+[+] -----+-----+--------------+---+--------------+----
+[+]  Sec | Blk | key A        |res| key B        |res
+[+] -----+-----+--------------+---+--------------+----
+[+]  000 | 003 | A0A1A2A3A4A5 | 1 | B578F38A5C61 | 1
+[+]  001 | 007 | 8C0C5D149C0C | 1 | E015CEE2380A | 1
+[+]  002 | 011 | A0A1A2A3A4A5 | 1 | 0000014B5C31 | 1
+[+]  003 | 015 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  004 | 019 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  005 | 023 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  006 | 027 | FFFFFFFFFFFF | 1 | 96A301BCE267 | 1
+[+]  007 | 031 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  008 | 035 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  009 | 039 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  010 | 043 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  011 | 047 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  012 | 051 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  013 | 055 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  014 | 059 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  015 | 063 | FFFFFFFFFFFF | 1 | FFFFFFFFFFFF | 1
+[+]  032 | 131 | 2ACC3DA8E7DB | 1 | 00001FEEF30E | 1
+[+] -----+-----+--------------+---+--------------+----
+
+
+    badrk = 0     # 'bad recovered key' count (ie. not recovered)
+    keyfile = r['keyfile']
+    rkey    = r['found_keys']
+    # fdump = r['dumpfile']
+    # rdata = r['data']
+
+    for k in range(0, 16+1):
+        for ab in [0, 1]:
+            if rkey[k][ab] == "":
+                if badrk == 0:
+                    lprint("Some keys were not recovered: ", end='')
+                else:
+                    lprint(", ", end='', prompt='')
+                badrk += 1
+
+                kn = k
+                if kn > 15:
+                    kn += 16
+                lprint(f"[{kn}/", end='', prompt='')
+                lprint("A]" if ab == 0 else "B]", end='', prompt='')
+    if badrk > 0:
+        lprint("", prompt='')
+    return keyfile
+
+	"""
+#	else:
+
+	cmd = f"hf mf autopwn {sz}"
+#	cmd += " -a --key FFFFFFFFFFFF"  # add a known key
+	res, cap = pm3Call(cmd, noisy=True)
+
+	reM = r".*sector.*valid key.*"
+	reS = r".*sector *([0-9]*) key type (.).*\[ (.{12}).*"
+	for lin in cap.split('\n'):
+		if re.match(reM, lin) is not None:
+			m = re.search(reS, lin)
+			sec  = int(m.group(1))
+			hole = Key.A if m.group(2) == "A" else Key.B
+			key  = m.group(3)
+			myCard.secKeySet(sec, hole, key)
+
+	log.say(myCard.show(hdr=True))
+
+	sys.exit(99)
+
 	log.say(f"Load all blocks...")
 	for b in myCard.blocks():
 		b.rdbl(b.blkN, hole=bdHole, key=bdKey, end='')
 		log.say("\r", end='', prompt='')
 	log.say("\n")
+
+
+
+#	#-----------------------------------------------------
+#	# find ANY key (for a Nesting attack)
+#		log.say("\nTry to guess one of the keys (for Nesting)...")
+#		key, hole = mfcGuessKey()
+#		if key != None:
+#			log.say(f"Guessed a key: {c.GRN}{hole}{c.NORM}/{c.BGRN}{key}{c.NORM}")
+#		else:
+#			log.say(f"{c.RED}Failed to guess a key")
+#			sys.exit(3)
+
+
 
 	log.say(myCard.show(hdr=True))
 
